@@ -1,0 +1,4 @@
+CREATE TABLE create_table_test (
+    hello INT,
+    goodbye INT
+);

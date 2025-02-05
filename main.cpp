@@ -1,4 +1,5 @@
 
+
 #include <QApplication>
 #include <QWidget>
 #include <QVBoxLayout>
@@ -16,7 +17,10 @@
 #include <cstring>
 #include <cctype>
 
-#include "structs.h"
+#include "structs_and_macros.h"
+#include "test_reader.h"
+#include "tokenizer.h"
+
 
 std::vector<table> tables;
 
@@ -35,152 +39,23 @@ std::vector<token> tokens;
 int token_position = 0;
 
 std::string input;
-int input_position;
 
-#define push_error_return(x)                \
-        std::string error = x;              \
-        errors.push_back(error);            \
-        return                              \
+int token_line_position = 0;
+int token_line_number = 0;
 
-#define push_error_return_empty_string(x)   \
-        std::string error = x;              \
-        errors.push_back(error);            \
-        return ""                           \
 
-//#define enough_token_check(X)
+display_table display_tab;
 
 
 
 // CURRENTLY WORKING ON:
 // CREATE TABLE
 // SELECT
-// INSERT
+// INSERT <-------------------------------- DOESNT WORK!!!!!!!!!!!!!!!!!!!!!!!!!!!!!?
 
 // underscores are allowed in words
-int read_identifier() {
-    int start = input_position;
-    while (input_position < input.length() && (std::isalpha(input[input_position]) || input[input_position] == '_')) {
-        input_position++;}
-    //printf("start [%d], pos after read [%d]. ", start, input_position);
-    //std::string word = input.substr(start, input_position - start);
-    //std::cout << "word = " + word + "\n";
-    return start;
-}
-
-int read_number() {
-    int start = input_position;
-    while (input_position < input.length() && std::isdigit(input[input_position])) {
-        input_position++;}
-    return start;
-}
-
-void tokenizer() {
-    while (input_position < input.length()) {
-
-    switch (input[input_position]) {
-        case ' ':
-            input_position++;
-            break;
-        case '(': {
-            token tok = {OPEN_PAREN, "OPEN_PAREN"};
-            tokens.push_back(tok);
-            input_position++;
-        } break;
-        case ')': {
-            token tok = {CLOSE_PAREN, "CLOSE_PAREN"};
-            tokens.push_back(tok);
-            input_position++;
-        } break;
-        case ';': {
-            token tok = {SEMICOLON, "SEMICOLON"};
-            tokens.push_back(tok);
-            input_position++;
-        } break;
-        case ',': {
-            token tok = {COMMA, "COMMA"};
-            tokens.push_back(tok);
-            input_position++;
-        } break;
-        case '*': {
-            token tok = {ASTERISK, "ASTERISK"};
-            tokens.push_back(tok);
-            input_position++;
-        } break;
-        default: {
-            if (std::isalpha(input[input_position])) {
-                int start = read_identifier();
-                std::string word = input.substr(start, input_position - start);
-                if (word == "CREATE") {
-                    token tok = {CREATE, "CREATE"};
-                    tokens.push_back(tok);
-                    continue;
-                } else if (word == "TABLE") {
-                    token tok = {TABLE, "TABLE"};
-                    tokens.push_back(tok);
-                    continue;
-                } else if (word == "SELECT") {
-                    token tok = {SELECT, "SELECT"};
-                    tokens.push_back(tok);
-                    continue;
-                } else if (word == "FROM") {
-                    token tok = {FROM, "FROM"};
-                    tokens.push_back(tok);
-                    continue;
-                } else if (word == "INSERT") {
-                    token tok = {INSERT, "INSERT"};
-                    tokens.push_back(tok);
-                    continue;
-                } else if (word == "INTO") {
-                    token tok = {INTO, "INTO"};
-                    tokens.push_back(tok);
-                    continue;
-                } else if (word == "VALUES") {
-                    token tok = {VALUES, "VALUES"};
-                    tokens.push_back(tok);
-                    continue;
-                }
-                token tok = {STRING_LITERAL, "EMPTY_STRING_LITERAL"};
-                tok.data = word;
-                tokens.push_back(tok);
-            } else if (std::isdigit(input[input_position])) {
-                int start = read_number();
-                if (start == -1) {
-                    push_error_return("Illegal integer literal");}
-                token tok = {INTEGER_LITERAL, "EMPTY_INTEGER_LITERAL"};
-                std::string substring = input.substr(start, input_position - start);
-                tok.data = substring;
-                tokens.push_back(tok);
-            } else {
-                token tok = {ILLEGAL, "ILLEGAL"};
-                tokens.push_back(tok);
-                errors.push_back("Illegal something token");
-                input_position++;
-            }
-        }
-    }
-    }
-}
 
 
-// find space, see if its a keyword, if it is use its parse function else error
-void parse() {
-    if (tokens.size() <= 0) {
-        push_error_return("No tokens");}
-
-    auto it = std::find(function_keywords.begin(), function_keywords.end(), tokens[token_position].data);
-    if (it == function_keywords.end()) {
-        std::string error = "Unknown keyword or inappropriate usage (" + tokens[token_position].data +  ") Token = " + std::to_string(token_position);
-        errors.push_back(error);
-        return;
-    }
-
-    int keyword_index = std::distance(function_keywords.begin(), it);
-
-    keyword_parse_functions[keyword_index]();
-
-    if (!errors.empty()) {
-        return;}
-}
 
 keyword_enum peek() {
     if (token_position >= tokens.size()) {
@@ -202,6 +77,27 @@ keyword_enum peek_ahead() {
     } else {
         return tokens[token_position + 1].keyword;}
 }
+
+// find space, see if its a keyword, if it is use its parse function else error
+void parse() {
+    if (tokens.size() == 0) {
+        push_error_return("No tokens");}
+
+    auto it = std::find(function_keywords.begin(), function_keywords.end(), tokens[token_position].data);
+    if (it == function_keywords.end()) {
+        std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = " + std::to_string(token_position) + ". Line = " + std::to_string(token_line_number) + ". Word = " + std::to_string(token_line_position);
+        errors.push_back(error);
+        return;
+    }
+
+    int keyword_index = std::distance(function_keywords.begin(), it);
+
+    keyword_parse_functions[keyword_index]();
+
+    if (!errors.empty()) {
+        return;}
+}
+
 
 void print_column(column col) {
 
@@ -250,6 +146,10 @@ void print_column(column col) {
 
 // sussy using macro in macro, might have to unmacro
 #define advance_and_check(x)                \
+    if (peek() == NEW_LINE) {               \
+        token_line_position = 0;            \
+        token_line_number++;}               \
+    token_line_position++;                  \
     token_position++;                       \
     if (token_position >= tokens.size()) {  \
         push_error_return(x);}              \
@@ -270,15 +170,15 @@ void parse_insert() {
         std::string table_name = peek_data();
 
         table tab;
-        bool found = false;
+        bool table_found = false;
         for (int i = 0; i < tables.size(); i++) {
             if (tables[i].name == table_name) {
                 tab = tables[i];
-                found = true;
+                table_found = true;
                 break;}
         }
 
-        if (!found) {
+        if (!table_found) {
             push_error_return("SELECT table not found");}
 
         advance_and_check("No tokens after INSERT INTO table");
@@ -475,6 +375,10 @@ void parse_select() {
                 print_column(tab.columns[i]);}
             std::cout << std::endl;
 
+            // For Qt
+            display_tab.to_display = true;
+            display_tab.tab = tab;
+
         } else {
             push_error_return("Unknown SELECT usage");}
     } else {
@@ -497,6 +401,7 @@ void parse_create() {
 
 }
 
+// NEED TO ADD NEW LINE CHECKS WAH
 // tokens should point to TABLE
 void parse_create_table() {
     if (tokens[token_position].keyword != TABLE) {
@@ -506,7 +411,7 @@ void parse_create_table() {
     advance_and_check("No tokens after CREATE TABLE");
 
     if (peek() != STRING_LITERAL) {
-        push_error_return("Non-string_literal token for table name");}
+        push_error_return("Non-string_literal token for table name. Token data (" + tokens[token_position].data + ")");}
 
     table tab;
     tab.name = tokens[token_position].data;
@@ -518,40 +423,67 @@ void parse_create_table() {
     
     advance_and_check("No data in CREATE TABLE");
 
-    while (true) {
-        column col;
+    if (peek() != STRING_LITERAL) {
+        push_error_return("Non-string literal token for field name. Token data (" + tokens[token_position].data + ")");}
+    
+    column col;
+    col.field_name = peek_data();
 
-        if (token_position >= tokens.size()) {
-            push_error_return("Out of tokens during CREATE TABLE, field name");}
+    advance_and_check("No data type after CREATE TABLE first item");
 
-        if (peek() != STRING_LITERAL) {
-            push_error_return("Non-string_literal token for field name");}
+    col.data_type = parse_data_type();
+    // might need a check here for out of bounds, or put it in the function
+    // std::cout << "AFTER DATA TYPE ==" << peek_data() << std::endl;
 
-        col.field_name = peek_data();
+    if (!errors.empty()) {
+        return;}
 
-        advance_and_check("No comma after CREATE TABLE field_name");
+    tab.columns.push_back(col);
 
-        advance_and_check("No data type after CREATE TABLE comma");
 
-        std::string data_type = parse_data_type();
+    if (peek() == COMMA) {
+        while (true) {
 
-        if (!errors.empty()) {
-            return;}
+            if (peek() != COMMA) {
+                push_error_return("Non-comma or termination after create table entry");
+            }
 
-        col.data_type = data_type;
+            advance_and_check("No data after CREATE TABLE comma");
 
-        tab.columns.push_back(col);
+            if (peek() != STRING_LITERAL) {
+                push_error_return("Non-string literal token for field name. Token data (" + tokens[token_position].data + ")");}
 
-        if (tokens[token_position].keyword == CLOSE_PAREN && tokens[token_position + 1].keyword == SEMICOLON) {
-            token_position += 2;
-            break;
+            col.field_name = peek_data();
+
+            advance_and_check("No data type after CREATE TABLE field name");
+
+            col.data_type = parse_data_type();
+            // here might also need the same thing
+
+            if (!errors.empty()) {
+                return;}
+
+            tab.columns.push_back(col);
+
+            if (peek() == CLOSE_PAREN && peek_ahead() == SEMICOLON) {
+                token_position += 2;
+                break;
+            }
         }
-    }
+    } else if (peek() == CLOSE_PAREN) {
+        advance_and_check("No closing ';' after table entry");
+        if (peek() != SEMICOLON) {
+            push_error_return("No closing ';' after table entry");}
+        token_position++;
+    } else {
+        push_error_return("No closing ');' after table entry");}
 
     if (!errors.empty()) {
         push_error_return("Unknown error during CREATE TABLE");}
 
     tables.push_back(tab);
+
+    std::cout << "AFTER TABLE CREATED == " << peek() << std::endl;
 }
 
 // Just returns data type for testing
@@ -689,7 +621,7 @@ std::string parse_data_type() {
                         errors.push_back("BIT cannot be greated than 64");}
                 }
             }
-            token_position++;
+            token_position++; // should be advance and check?? <----
 
             if (peek() != CLOSE_PAREN) {
                 errors.push_back("BIT missing clossing parenthesis");}
@@ -745,7 +677,21 @@ std::string parse_data_type() {
     return "idk what type that is man";
 }
 
+void print_tokens() {
+    for (int i = 0; i < tokens.size(); i++) {
+        std::cout << "Token keyword ID (" << tokens[i].keyword << "). Token value (" << tokens[i].data << ")\n";
+    }
+}
+
+enum input_style {
+    VISUAL, TEST
+};
+
+enum input_style input_style = TEST;
+
 int main (int argc, char* argv[]) {
+
+    display_tab.to_display = false;
 
     // init function vector
     function_keywords.push_back("CREATE");
@@ -766,54 +712,187 @@ int main (int argc, char* argv[]) {
     QWidget window;
     window.setWindowTitle("Squel");
 
-    QVBoxLayout* layout = new QVBoxLayout(&window);
+    QVBoxLayout* main_layout = new QVBoxLayout(&window);
 
-    QLabel* label_enter_command = new QLabel("ENTER COMMAND:");
-    QLineEdit* line_edit_input = new QLineEdit();
+    QVBoxLayout* layout = new QVBoxLayout();
+    QLabel* enter_command_label = new QLabel("ENTER COMMAND:");
+    QLineEdit* input_line_edit = new QLineEdit();
+    QPushButton* submit_button = new QPushButton("Submit");
 
-    QPushButton *submit_button = new QPushButton("Submit");
-
-    QLabel* label_command_results = new QLabel();
-
-    layout->addWidget(label_enter_command);
-    layout->addWidget(line_edit_input);
+    layout->addWidget(enter_command_label);
+    layout->addWidget(input_line_edit);
     layout->addWidget(submit_button);
-    layout->addWidget(label_command_results);
 
-    // Connecting button click to capture input from QLineEdit
+    QVBoxLayout* test_info_layout;
+    QLabel* current_test_marker_label;
+    QLabel* current_test_label;
+    QPushButton* start_test_button;
+    if (input_style == TEST) {
+        test_info_layout = new QVBoxLayout();
+        current_test_marker_label = new QLabel("Current test:");
+        current_test_label = new QLabel();
+        start_test_button = new QPushButton("start test");
+
+        test_info_layout->addWidget(current_test_marker_label);
+        test_info_layout->addWidget(current_test_label);
+        test_info_layout->addWidget(start_test_button);
+
+        main_layout->addLayout(test_info_layout);
+    }
+
+    main_layout->addLayout(layout);  // Input and submit
+
+    QGridLayout* label_command_results = new QGridLayout();
+    main_layout->addLayout(label_command_results);
+
+    // Table grid
+    QGridLayout* table_grid = new QGridLayout();
+    main_layout->addLayout(table_grid);
+
+    auto clear_layout = [](QLayout* layout) {
+        QLayoutItem* item;
+        while ((item = layout->takeAt(0)) != nullptr) {
+            delete item->widget(); // deletes the widget
+            delete item;           // deletes the layout item
+        }
+    };
+    
+    QObject::connect(start_test_button, &QPushButton::clicked, [&]() {\
+        input = read_test();
+        current_test_label->setText(QString::fromStdString(input));
+        if (input.length() > 600) {
+            std::cout << "INPUT TOO LONG >:(\n";
+            return;}
+        if (input.length() == 0) {
+            std::cout << "No input\n";
+            return;}
+
+        std::cout << "input = '" << input << "'\n";
+
+        tokens = tokenizer(input);
+        print_tokens();
+
+        parse();
+
+        if (!errors.empty()) {
+            //clear_layout(table_grid);
+            clear_layout(label_command_results);
+            QLabel* label_error = new QLabel("Errors:");
+            label_command_results->addWidget(label_error, 0, 0);
+            for (int i = 0; i < errors.size(); i++) {
+                std::cout << "ERROR: " + errors[i] + "\n";
+                QLabel* label_results = new QLabel(QString::fromStdString(errors[i]));
+                int y = i + 1;
+                int x = 0;
+                label_command_results->addWidget(label_results, y, x);
+            }
+        } else {
+            clear_layout(label_command_results);
+            QLabel* label_results = new QLabel("No errors");
+            label_command_results->addWidget(label_results, 0, 0);
+
+            if (display_tab.to_display) {
+                // Select items grid
+                clear_layout(table_grid);  
+            
+                table tab = display_tab.tab;
+
+                table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)));
+
+                // Column names
+                for (int i = 0; i < tab.columns.size(); i++) {
+                    int y = 1; 
+                    int x = i;  // can overflow
+                    table_grid->addWidget(new QLabel(QString::fromStdString(tab.columns[i].field_name)), y, x);
+                }
+
+                // Column data
+                for (int i = 1; i < tab.rows.size(); i++) {
+                    for (int j = 0; j < tab.rows[i].columns.size(); j++) {
+                    int y = i + 1;
+                    int x = j;
+                    table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].columns[j].data)), y, x);
+                    }
+                }
+
+            }
+        }
+
+    });
+
     QObject::connect(submit_button, &QPushButton::clicked, [&]() {
-        QString input = line_edit_input->text();
-        label_command_results->setText(input);
+
+        // Input
+        QString qt_input = input_line_edit->text();
+        input = qt_input.toUtf8().constData();
+
+
+        if (input.length() > 600) {
+            std::cout << "INPUT TOO LONG >:(\n";
+            return;}
+        if (input.length() == 0) {
+            std::cout << "No input\n";
+            return;}
+
+        tokens = tokenizer(input);
+        print_tokens();
+        
+        parse();
+
+        if (!errors.empty()) {
+            //clear_layout(table_grid);
+            clear_layout(label_command_results);
+            QLabel* label_error = new QLabel("Errors:");
+            label_command_results->addWidget(label_error, 0, 0);
+            for (int i = 0; i < errors.size(); i++) {
+                std::cout << "ERROR: " + errors[i] + "\n";
+                QLabel* label_results = new QLabel(QString::fromStdString(errors[i]));
+                int y = i + 1;
+                int x = 0;
+                label_command_results->addWidget(label_results, y, x);
+            }
+        } else {
+            clear_layout(label_command_results);
+            QLabel* label_results = new QLabel("No errors");
+            label_command_results->addWidget(label_results, 0, 0);
+
+            if (display_tab.to_display) {
+                // Select items grid
+                clear_layout(table_grid);  
+            
+                table tab = display_tab.tab;
+
+                table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)));
+
+                // Column names
+                for (int i = 0; i < tab.columns.size(); i++) {
+                    int y = 1; 
+                    int x = i;  // can overflow
+                    table_grid->addWidget(new QLabel(QString::fromStdString(tab.columns[i].field_name)), y, x);
+                }
+
+                // Column data
+                for (int i = 1; i < tab.rows.size(); i++) {
+                    for (int j = 0; j < tab.rows[i].columns.size(); j++) {
+                    int y = i + 1;
+                    int x = j;
+                    table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].columns[j].data)), y, x);
+                    }
+                }
+
+            }
+        }
+
+        // Clean up for next loop
+        display_tab.to_display = false;
+        input_line_edit->clear();
+        errors.clear();
+        tokens.clear();
+        token_position = 0;
+
     });
 
     window.show();
 
-    // Get user input forever
-    while (true) {
-        //std::cout << "> ";
-        //std::getline(std::cin, input);
-        window.show();
-        if (input.length() > 600) {
-            std::cout << "INPUT TOO LONG >:(";
-            continue;
-        }
-        if (input.length() == 0) {
-            continue;}
-        tokenizer();
-        for (int i = 0; i < tokens.size(); i++) {
-            std::cout << "Keyword: " << std::to_string(tokens[i].keyword) << ", Data: " + tokens[i].data << std::endl;
-        }
-        
-        parse();
-        if (errors.size() != 0) {
-            for (int i = 0; i < errors.size(); i++) {
-                std::cout << "ERROR: " + errors[i] + "\n";
-            }
-        }
-        errors.clear();
-        tokens.clear();
-        token_position = 0;
-        input_position = 0;
-    }
     return app.exec();
 }
