@@ -1,0 +1,1 @@
+run qmake then make
