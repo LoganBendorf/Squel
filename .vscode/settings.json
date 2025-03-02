@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.ejs": "html",
         "algorithm": "cpp",
         "format": "cpp",
         "array": "cpp",
@@ -66,6 +67,7 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "codecvt": "cpp",
-        "fstream": "cpp"
+        "fstream": "cpp",
+        "future": "cpp"
     }
 }

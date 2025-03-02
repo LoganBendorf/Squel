@@ -11,41 +11,53 @@
 #include <cstring>
 #include <cctype>
 
-#define push_error_return(x)                \
-        std::string error = x;              \
-        std::string line_string = "Line: " + std::to_string(token_line_number) + ". Position: " + std::to_string(token_line_position); \
-        errors.push_back(error);            \
-        return                              \
+#define push_error_return(x)                    \
+        token curTok;                           \
+        if (token_position >= tokens.size()) {  \
+            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
+        } else {                                \
+            curTok = tokens[token_position];}   \
+        std::string error = x;                  \
+        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
+        errors.push_back(error);                \
+        return                                  \
 
-#define push_error_return_empty_string(x)   \
-        std::string error = x;              \
-        errors.push_back(error);            \
-        return ""                           \
+#define push_error_return_empty_string(x)       \
+        token curTok;                           \
+        if (token_position >= tokens.size()) {  \
+            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
+        } else {                                \
+            curTok = tokens[token_position];}   \
+        std::string error = x;                  \
+        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
+        errors.push_back(error);                \
+        return ""                               \
 
 
 enum keyword_enum {
-    CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON, COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE
+    CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON, COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA
 };
 
 typedef struct token {
     keyword_enum keyword;
     std::string data;
+    int line;
+    int position;
 } token;
 
-typedef struct column {
+typedef struct column_data {
     std::string field_name;
     std::string data_type;
     std::string default_value;
-    std::string data;
-} column;
+} column_data;
 
 typedef struct row {
-    std::vector<column> columns;
+    std::vector<std::string> column_values;
 } row;
 
 typedef struct table {
     std::string name;
-    std::vector<column> columns;
+    std::vector<column_data> column_datas;
     std::vector<row> rows;
 } table;
 
