@@ -1,7 +1,7 @@
 QT += widgets
 TEMPLATE = app
-SOURCES += main.cpp lexer.cpp parser.cpp test_reader.cpp
-HEADERS += lexer.h parser.h test_reader.h structs_and_macros.h
+SOURCES += main.cpp lexer.cpp parser.cpp evaluator.cpp test_reader.cpp
+HEADERS += lexer.h parser.h evaluator.h test_reader.h structs_and_macros.h
 TARGET = myApp
 
 

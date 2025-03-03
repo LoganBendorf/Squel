@@ -11,29 +11,6 @@
 #include <cstring>
 #include <cctype>
 
-#define push_error_return(x)                    \
-        token curTok;                           \
-        if (token_position >= tokens.size()) {  \
-            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
-        } else {                                \
-            curTok = tokens[token_position];}   \
-        std::string error = x;                  \
-        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
-        errors.push_back(error);                \
-        return                                  \
-
-#define push_error_return_empty_string(x)       \
-        token curTok;                           \
-        if (token_position >= tokens.size()) {  \
-            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
-        } else {                                \
-            curTok = tokens[token_position];}   \
-        std::string error = x;                  \
-        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
-        errors.push_back(error);                \
-        return ""                               \
-
-
 enum keyword_enum {
     CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON, COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA
 };

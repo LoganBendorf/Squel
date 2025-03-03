@@ -22,6 +22,7 @@
 #include "test_reader.h"
 #include "lexer.h"
 #include "parser.h"
+#include "evaluator.h"
 
 std::vector<std::string> errors;
 
@@ -59,6 +60,14 @@ void print_tokens(std::vector<token> tokens) {
     for (int i = 0; i < tokens.size(); i++) {
         std::cout << " Keyword: " << std::setw(15) << std::left << keyword_enum_to_string[tokens[i].keyword] + ","
                                        << " Value: " << tokens[i].data << "\n";
+    }
+    std::cout << "DONE ---------------------------\n\n";
+}
+
+void print_nodes(std::vector<node*> nodes) {
+    std:: cout << "PRINTING NODES -----------------\n";
+    for (int i = 0; i < nodes.size(); i++) {
+        std::cout << std::to_string(i + 1) << ":\n" << nodes[i]->inspect();
     }
     std::cout << "DONE ---------------------------\n\n";
 }
@@ -146,7 +155,11 @@ int main (int argc, char* argv[]) {
         print_tokens(tokens);
 
         parser_init(tokens);
-        parse();
+        std::vector<node*> nodes = parse();
+        print_nodes(nodes);
+
+        eval_init(nodes);
+        eval();
 
         if (!errors.empty()) {
             //clear_layout(table_grid);
@@ -211,7 +224,11 @@ int main (int argc, char* argv[]) {
         print_tokens(tokens);
         
         parser_init(tokens);
-        parse();
+        std::vector<node*> nodes = parse();
+        print_nodes(nodes);
+        
+        eval_init(nodes);
+        eval();
 
         if (!errors.empty()) {
             //clear_layout(table_grid);

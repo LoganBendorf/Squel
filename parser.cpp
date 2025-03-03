@@ -1,20 +1,55 @@
 
 #include "parser.h"
+#include "node.h"
 
 
 std::vector<keyword_enum> function_keywords;
 std::vector<std::function<void()>> keyword_parse_functions;
 
 extern std::vector<std::string> errors;
-
 extern std::vector<table> tables;
-
 extern display_table display_tab;
 
-std::vector<token> tokens;
-int token_position = 0;
+static std::vector<node*> nodes;
 
-int loop_count = 0;
+static std::vector<token> tokens;
+static int token_position = 0;
+
+static int loop_count = 0;
+
+#define push_error_return(x)                    \
+        token curTok;                           \
+        if (token_position >= tokens.size()) {  \
+            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
+        } else {                                \
+            curTok = tokens[token_position];}   \
+        std::string error = x;                  \
+        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
+        errors.push_back(error);                \
+        return                                  \
+
+#define push_error_return_empty_string(x)       \
+        token curTok;                           \
+        if (token_position >= tokens.size()) {  \
+            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
+        } else {                                \
+            curTok = tokens[token_position];}   \
+        std::string error = x;                  \
+        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
+        errors.push_back(error);                \
+        return ""    
+
+#define push_error_return_empty_string(x)       \
+        token curTok;                           \
+        if (token_position >= tokens.size()) {  \
+            curTok.keyword = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
+        } else {                                \
+            curTok = tokens[token_position];}   \
+        std::string error = x;                  \
+        error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
+        errors.push_back(error);                \
+        return ""                               \
+
 
 // sussy using macro in macro
 #define advance_and_check(x)                \
@@ -41,6 +76,7 @@ void parser_init(std::vector<token> toks) {
     tokens = toks;
     token_position = 0;
     loop_count = 0;
+    nodes.clear();
 
     // init function vector
     function_keywords.push_back(CREATE);
@@ -60,9 +96,10 @@ void parser_init(std::vector<token> toks) {
 
 // find space, see if its a keyword, if it is use its parse function else error
 // underscores are allowed in words
-void parse() {
+std::vector<node*> parse() {
     if (tokens.size() == 0) {
-        push_error_return("No tokens");}
+        errors.push_back("parse(): No tokens");
+        return nodes;}
 
     auto it = std::find(function_keywords.begin(), function_keywords.end(), tokens[token_position].keyword);
     if (it == function_keywords.end()) {
@@ -71,7 +108,7 @@ void parse() {
                           + std::to_string(tok.keyword) + ". Line = " + std::to_string(tok.line) 
                           + ". Word = " + std::to_string(tok.position);
         errors.push_back(error);
-        return;
+        return nodes;
     }
 
     int keyword_index = std::distance(function_keywords.begin(), it);
@@ -79,43 +116,15 @@ void parse() {
     keyword_parse_functions[keyword_index]();
 
     if (!errors.empty()) {
-        return;}
+        return nodes;}
 
     if (loop_count++ > 100) {
         std::cout << "le stuck in loop?";}
 
     if (peek()!= LINE_END) {
         parse();}
-}
 
-void eval_insert_into(struct insert_into info) {
-
-    table* tab_ptr;
-    bool table_found = false;
-    for (int i = 0; i < tables.size(); i++) {
-        if (tables[i].name == info.table_name) {
-            tab_ptr = &tables[i];
-            table_found = true;
-            break;}
-    }
-
-    if (!table_found) {
-        push_error_return("INSERT INTO, table not found");}
-
-    if (info.field_names.size() != info.values.size()) {
-        push_error_return("INSET INTO, field names and VALUES have non-equal size");}
-
-    if (info.field_names.size() > (*tab_ptr).column_datas.size()) {
-        push_error_return("INSERT INTO, more field names than table has columns");}
-
-    // Currently not checking anyting cause i dont feel like it rn
-
-    row roh;
-    roh.column_values = info.values;
-
-    (*tab_ptr).rows.push_back(roh);
-
-
+    return nodes;
 }
 
 // doesnt work, should be inserting ROWS
@@ -126,7 +135,7 @@ void parse_insert() {
 
     advance_and_check("No tokens after INSERT");
 
-    struct insert_into info;
+    insert_into* info = new insert_into();
 
     if (peek() == INTO) {
 
@@ -135,7 +144,7 @@ void parse_insert() {
         if (peek() != STRING_LITERAL) {
             push_error_return("INSERT INTO bad token type for table name");}
 
-        info.table_name = peek_data();
+        info->table_name = peek_data();
 
         advance_and_check("No tokens after INSERT INTO table");
 
@@ -151,7 +160,7 @@ void parse_insert() {
         int count = 1;
         if (peek() != STRING_LITERAL) {
             errors.push_back("INSERT INTO table, name must be a string");}
-        info.field_names.push_back(peek_data());
+        info->field_names.push_back(peek_data());
 
         advance_and_check("Missing closing parenthesis");
 
@@ -165,7 +174,7 @@ void parse_insert() {
             if (peek() != STRING_LITERAL) {
                 errors.push_back("Field names must be strings");}
             
-            info.field_names.push_back(peek_data());
+            info->field_names.push_back(peek_data());
             
             advance_and_check("Field names missing closing parenthesis");
 
@@ -196,7 +205,7 @@ void parse_insert() {
         count = 1;
         if (peek() != STRING_LITERAL && peek() != INTEGER_LITERAL) {
             errors.push_back("VALUES must be string or integer, token was " + std::to_string(peek()));}
-        info.values.push_back(peek_data());
+        info->values.push_back(peek_data());
 
         advance_and_check("Missing closing parenthesis");
 
@@ -210,7 +219,7 @@ void parse_insert() {
             if (peek() != STRING_LITERAL && peek() != INTEGER_LITERAL) {
                 errors.push_back("VALUES must be string or integer, token was " + std::to_string(peek()));}
             
-            info.values.push_back(peek_data());
+            info->values.push_back(peek_data());
             
             advance_and_check("VALUES missing closing parenthesis");
 
@@ -233,7 +242,7 @@ void parse_insert() {
         if (!errors.empty()) {
             return;}
 
-        if (info.field_names.size() != info.values.size()) {
+        if (info->field_names.size() != info->values.size()) {
             push_error_return("INSET INTO, field names and VALUES have non-equal size");}
 
     } else {
@@ -242,10 +251,7 @@ void parse_insert() {
     if (peek() == SEMICOLON) {
         token_position++;}
 
-    if (errors.empty()) {
-        eval_insert_into(info);
-    }
-
+    nodes.push_back(info);
 }
 
 
@@ -266,30 +272,14 @@ void parse_select() {
 
             std::string table_name = peek_data();
 
-            table tab;
-            bool found = false;
-            for (int i = 0; i < tables.size(); i++) {
-                if (tables[i].name == table_name) {
-                    tab = tables[i];
-                    found = true;
-                    break;}
-            }
-            
-            if (!found) {
-                push_error_return("SELECT table not found");}
-
-            std::cout << table_name << ":\n";
-
-            print_table(tab);
-
-            // For Qt
-            display_tab.to_display = true;
-            display_tab.tab = tab;
-
             // Advance past string literal
             advance_and_check("");
             // Advance past semicolon
             token_position++;
+
+            select_from* info = new select_from();
+            info->table_name = table_name;
+            nodes.push_back(info);
 
         } else {
             push_error_return("Unknown SELECT usage");}
@@ -298,15 +288,13 @@ void parse_select() {
 }
 
 void parse_create() {
-    if (tokens[token_position].keyword != CREATE) {
+    if (peek() != CREATE) {
         std::cout << "parse_create() called with non-create token";
         exit(1);}
-    token_position++;
 
-    if (token_position >= tokens.size()) {
-        push_error_return("No tokens after CREATE");}
+    advance_and_check("No tokens after CREATE");
 
-    if (tokens[token_position].keyword == TABLE) {
+    if (peek() == TABLE) {
         parse_create_table();
     } else {
         push_error_return("Unknown keyword (" + tokens[token_position].data + ") after CREATE");}
@@ -324,10 +312,10 @@ void parse_create_table() {
     advance_and_check("No tokens after CREATE TABLE");
 
     if (peek() != STRING_LITERAL) {
-        push_error_return("Non-string_literal token for table name. Token data (" + tokens[token_position].data + ")");}
+        push_error_return("Non-string_literal token for table name. Token data (" + peek_data() + ")");}
 
-    table tab;
-    tab.name = peek_data();
+    create_table* info = new create_table();
+    info->table_name = peek_data();
 
     advance_and_check("No open paren '(' after CREATE TABLE");
 
@@ -337,7 +325,7 @@ void parse_create_table() {
     advance_and_check("No data in CREATE TABLE");
 
     if (peek() != STRING_LITERAL) {
-        push_error_return("Non-string literal token for field name. Token data (" + tokens[token_position].data + ")");}
+        push_error_return("Non-string literal token for field name. Token data (" + peek_data() + ")");}
     
     column_data col;
     col.field_name = peek_data();
@@ -351,7 +339,7 @@ void parse_create_table() {
     if (!errors.empty()) {
         return;}
 
-    tab.column_datas.push_back(col);
+    info->column_datas.push_back(col);
 
     if (peek() == COMMA) {
         while (true) {
@@ -376,7 +364,7 @@ void parse_create_table() {
             if (!errors.empty()) {
                 return;}
 
-            tab.column_datas.push_back(col);
+            info->column_datas.push_back(col);
 
             if (peek() == CLOSE_PAREN && peek_ahead() == SEMICOLON) {
                 break;
@@ -394,7 +382,7 @@ void parse_create_table() {
     if (!errors.empty()) {
         push_error_return("Unknown error during CREATE TABLE");}
 
-    tables.push_back(tab);
+    nodes.push_back(info);
 
     std::cout << "AFTER TABLE CREATED, TOKEN KEYWORD == " << keyword_enum_to_string[peek()] << std::endl;
 }
@@ -604,33 +592,4 @@ keyword_enum peek_ahead() {
         return LINE_END;
     } else {
         return tokens[token_position + 1].keyword;}
-}
-
-
-void print_table(table tab) {
-
-    for (int i = 0; i < tab.column_datas.size(); i++) {
-        std::string name = tab.column_datas[i].field_name;
-        std::string to_print = name.substr(0, 8);
-        int pad_length = 8 - to_print.length();
-        std::string pad(pad_length, ' ');
-        std::string out_string = to_print + pad + " | ";
-        std::cout << out_string;
-    }
-
-    std::cout << std::endl;
-
-    for (int i = 0; i < tab.rows.size(); i++) {
-        for(int j = 0; j < tab.rows[0].column_values.size(); j++) {
-            std::string name = tab.rows[i].column_values[j];
-            std::string to_print = name.substr(0, 8);
-            int pad_length = 8 - to_print.length();
-            std::string pad(pad_length, ' ');
-            std::string out_string = to_print + pad + " | ";
-            std::cout << out_string;
-        }
-        std::cout << std::endl;
-    }
-
-    std::cout << std::endl;
 }
