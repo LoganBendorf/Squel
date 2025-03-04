@@ -67,7 +67,7 @@ static int loop_count = 0;
 std::string keyword_enum_to_string[] =  
     {"CREATE", "TABLE", "SELECT", "FROM", "INSERT", "INTO", "VALUES", 
         "STRING_LITERAL", "INTEGER_LITERAL", "OPEN_PAREN", "CLOSE_PAREN",
-         "SEMICOLON", "COMMA", "ASTERISK", "LINE_END", "ILLEGAL", "NEW_LINE", "DATA"};
+         "SEMICOLON", "COMMA", "ASTERISK", "LINE_END", "ILLEGAL", "NEW_LINE", "DATA", "QUOTE", "BOOL"};
 
 
 // Meat
@@ -312,7 +312,7 @@ void parse_create_table() {
     advance_and_check("No tokens after CREATE TABLE");
 
     if (peek() != STRING_LITERAL) {
-        push_error_return("Non-string_literal token for table name. Token data (" + peek_data() + ")");}
+        push_error_return("Non-string literal token for table name. Token data (" + peek_data() + ")");}
 
     create_table* info = new create_table();
     info->table_name = peek_data();
@@ -324,53 +324,41 @@ void parse_create_table() {
     
     advance_and_check("No data in CREATE TABLE");
 
-    if (peek() != STRING_LITERAL) {
-        push_error_return("Non-string literal token for field name. Token data (" + peek_data() + ")");}
-    
-    column_data col;
-    col.field_name = peek_data();
+    while (true) {
 
-    advance_and_check("No data type after CREATE TABLE first item");
+        if (peek() != STRING_LITERAL) {
+            push_error_return("Non-string literal token for field name. Token data (" + peek_data() + ")");}
 
-    col.data_type = parse_data_type();
-    // might need a check here for out of bounds, or put it in the function
-    // std::cout << "AFTER DATA TYPE ==" << peek_data() << std::endl;
+        column_data col;
+        col.field_name = peek_data();
 
-    if (!errors.empty()) {
-        return;}
+        advance_and_check("No data type after CREATE TABLE field name");
 
-    info->column_datas.push_back(col);
+        col.data_type = parse_data_type();
+        if (!errors.empty()) {
+            return;}
 
-    if (peek() == COMMA) {
-        while (true) {
-
-            if (peek() != COMMA) {
-                push_error_return("Non-comma or termination after create table entry");
-            }
-
-            advance_and_check("No data after CREATE TABLE comma");
-
-            if (peek() != STRING_LITERAL) {
-                push_error_return("Non-string literal token for field name. Token data (" + peek_data() + ")");}
-
-            column_data col;
-            col.field_name = peek_data();
-
-            advance_and_check("No data type after CREATE TABLE field name");
-
-            col.data_type = parse_data_type();
-            // here might also need the same thing
-
+        // Need to check in gdb if it sshould advance first
+        if (peek() != COMMA && peek() != CLOSE_PAREN) {
+            col.default_value = parse_default_value(col.data_type);
             if (!errors.empty()) {
                 return;}
-
-            info->column_datas.push_back(col);
-
-            if (peek() == CLOSE_PAREN && peek_ahead() == SEMICOLON) {
-                break;
-            }
+            advance_and_check("");
+        } else {
+            col.default_value = "";
         }
+
+        info->column_datas.push_back(col);
+
+        if (peek() == CLOSE_PAREN && peek_ahead() == SEMICOLON) {
+            break;
+        } else if (peek() != COMMA) {
+            push_error_return("Non-comma or termination after create table entry");
+        }
+
+        advance_and_check("No data after CREATE TABLE comma");
     }
+
     if (peek() == CLOSE_PAREN) {
         advance_and_check("No closing ';' after table entry");
         if (peek() != SEMICOLON) {
@@ -385,6 +373,42 @@ void parse_create_table() {
     nodes.push_back(info);
 
     std::cout << "AFTER TABLE CREATED, TOKEN KEYWORD == " << keyword_enum_to_string[peek()] << std::endl;
+}
+
+bool is_integer_data_type(std::string data_type) {
+    if (data_type.find("CHAR") == std::string::npos &&
+        data_type.find("INT") == std::string::npos &&
+        data_type.find("BOOL") == std::string::npos
+    ) {
+        return false;
+    }
+    return true;
+}
+
+bool is_boolean_data_type(std::string data_type) {
+    if (data_type.find("BOOL") == std::string::npos) {
+        return false;
+    }
+    return true;
+}
+
+std::string parse_default_value(std::string data_type) {
+    if (peek_data() == "DEFAULT") {
+        advance_and_check_ret_str("No value after DEFAULT");
+        if (peek() == INTEGER_LITERAL) {
+            if (!(is_integer_data_type(data_type))) {
+                push_error_return_empty_string("Attemping to set integer default value to non-integer column");
+            }   
+            return (peek_data());
+        }
+        if (peek() == BOOL) {
+            if (!(is_boolean_data_type(data_type))) {
+                push_error_return_empty_string("Attemping to set bool default value to non-bool column");
+            }
+            return (peek_data());
+        }
+    }
+    return "";
 }
 
 

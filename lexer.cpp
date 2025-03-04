@@ -7,7 +7,7 @@ extern std::vector<std::string> errors;
 static std::string input;
 static int input_position;
 
-static int line_count = 0;
+static int line_count = 1;
 static int line_position_count = 0;
 
 
@@ -32,16 +32,83 @@ token create_token(keyword_enum keyword, std::string data, int line, int line_po
     return token{keyword, data, line, line_position};
 }
 
+// Needs testing
+token parse_quoted_string(char type) {
+    // start only used for token creation
+    int start = input_position;
+    int start_line = line_count;
+
+    std::string out;
+    while (input_position++ < input.length() && (line_position_count++)) {
+        if (input[input_position] == '\n') {
+            line_count++;
+            line_position_count = 0;
+        }
+
+        if (input[input_position] == '\\') {
+            if (!(input_position + 1 < input.length())) {
+                errors.push_back("Lexer: \\ raw backslash has no partner (i.e. the n in \\n is missing) ");
+                return token{};
+            }
+            input_position++;
+            line_position_count++;
+            if (input[input_position] == '\\') {
+                out.push_back('\\');
+            } else if (input[input_position] == 'n') {
+                out.push_back('\n');
+            }
+            continue;
+        }
+
+        if (input[input_position] == type) {
+            if (input_position + 1 < input.length() && input[input_position + 1] == type) {
+                // Quote is escaped, add it then skip over the next
+                out.push_back(input[input_position]);
+                input_position++;
+                line_position_count++;
+                continue;
+            } else {
+                break;
+            }
+        }
+        out.push_back(input[input_position]);
+    }
+    if (input_position >= input.length()) {
+        errors.push_back("Lexer: Couldn't find end of quotes");
+        return token{};
+    }
+    return create_token(STRING_LITERAL, out, start_line, start);
+}
 
 std::vector<token> lexer(std::string input_str) {
     std::vector<token> tokens;
     input = input_str;
     input_position = 0;
-    line_count = 0;
+    line_count = 1;
     line_position_count = 0;
     while (input_position < input.length()) {
 
     switch (input[input_position]) {
+        case '\'': {
+            token tok = parse_quoted_string('\'');
+            if (!errors.empty()) {
+                std::vector<token> garbage;
+                return garbage;
+            }
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
+        case '\"': {
+            token tok = parse_quoted_string('\"');
+            if (!errors.empty()) {
+                std::vector<token> garbage;
+                return garbage;
+            }
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
         case ' ':
             input_position++;
             line_position_count++;
@@ -54,6 +121,7 @@ std::vector<token> lexer(std::string input_str) {
         case '\r':
             input_position++;
             line_position_count++;
+            line_position_count = 0;
             break;
         case '(': {
             token tok = create_token(OPEN_PAREN, "(", line_count, line_position_count);
@@ -121,6 +189,16 @@ std::vector<token> lexer(std::string input_str) {
                     continue;
                 } else if (word == "VALUES") {
                     token tok = create_token(VALUES, "VALUES", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
+                } else if (word == "true") {
+                    token tok = create_token(BOOL, "true", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
+                } else if (word == "false") {
+                    token tok = create_token(BOOL, "false", line_count, line_position_count);
                     tokens.push_back(tok);
                     line_position_count += word.size();
                     continue;

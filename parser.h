@@ -12,6 +12,9 @@ void parse_insert();
 void parse_select();
 void parse_create();
 void parse_create_table();
+bool is_integer_data_type(std::string data_type);
+bool is_boolean_data_type(std::string data_type);
+std::string parse_default_value(std::string data_type);
 std::string parse_data_type();
 
 // Helpers

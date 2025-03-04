@@ -42,6 +42,13 @@ void eval() {
 
 void eval_create_table(const create_table* info) {
 
+    for (int i = 0; i < tables.size(); i++) {
+        if (tables[i].name == info->table_name) {
+            errors.push_back("Table already exists");
+            return;
+        }
+    }
+
     table tab;
     tab.name = info->table_name;
     tab.column_datas = info->column_datas;
@@ -112,11 +119,14 @@ void eval_insert_into(const insert_into* info) {
             break;}
     }
 
+    if (info->values.size() == 0) {
+        eval_push_error_return("INSERT INTO, no values");}
+
     if (!table_found) {
         eval_push_error_return("INSERT INTO, table not found");}
 
-    if (info->field_names.size() != info->values.size()) {
-        eval_push_error_return("INSET INTO, field names and VALUES have non-equal size");}
+    if (info->field_names.size() < info->values.size()) {
+        eval_push_error_return("INSET INTO, more values than field names");}
 
     if (info->field_names.size() > tab_ptr->column_datas.size()) {
         eval_push_error_return("INSERT INTO, more field names than table has columns");}
@@ -124,7 +134,24 @@ void eval_insert_into(const insert_into* info) {
     // Currently not checking anyting cause i dont feel like it rn
 
     row roh;
-    roh.column_values = info->values;
+    int j = 0;
+    for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
+        if (tab_ptr->column_datas[i].field_name == info->field_names[j]) {
+            roh.column_values.push_back(info->values[j]);
+            j++;
+            continue;
+        }
+        roh.column_values.push_back(tab_ptr->column_datas[i].default_value);
+    }
+
+    if (j < info->values.size()) {
+        std::string err = "INSERT INTO, field name (" + info->field_names[j] + ") not found";
+        eval_push_error_return(err);
+    }
+
+    if (j < info->values.size()) {
+        eval_push_error_return("eval_insert_into(): werid bug");
+    }
 
     tab_ptr->rows.push_back(roh);
 }

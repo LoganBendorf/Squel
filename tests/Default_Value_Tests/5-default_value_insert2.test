@@ -1,0 +1,12 @@
+CREATE TABLE default_value_test (
+    hello INT DEFAULT 12,
+    goodbye INT
+);
+
+INSERT INTO default_value_test (hello)
+VALUES (1);
+
+INSERT INTO default_value_test (goodbye)
+VALUES (2);
+
+SELECT * FROM default_value_test;

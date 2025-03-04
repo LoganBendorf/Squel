@@ -12,7 +12,8 @@
 #include <cctype>
 
 enum keyword_enum {
-    CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON, COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA
+    CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,
+     COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA, QUOTE, BOOL
 };
 
 typedef struct token {
@@ -42,5 +43,12 @@ typedef struct display_table {
     bool to_display;
     table tab;
 } display_table;
+
+struct test {
+    std::string folder_name;
+    std::vector<std::string> test_paths;
+    int max_tests = 0;
+    int current_test_num = 0;
+};
 
 #endif
