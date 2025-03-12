@@ -1,0 +1,16 @@
+CREATE TABLE varchar_type_bad_format_test (
+    hello VARCHAR(20
+);
+
+CREATE TABLE varchar_type_bad_format_test (
+    hello VARCHAR20)
+);
+
+CREATE TABLE varchar_type_bad_format_test (
+    hello VARCHAR 20)
+);
+
+CREATE TABLE varchar_type_bad_format_test (
+    hello VARCHAR(20))
+);
+

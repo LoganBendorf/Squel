@@ -1,0 +1,9 @@
+CREATE TABLE minus_test (
+    hello INT,
+    goodbye INT
+);
+
+INSERT INTO minus_test (hello, goodbye)
+VALUES (1, -2);
+
+SELECT * FROM minus_test;

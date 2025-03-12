@@ -1,0 +1,9 @@
+CREATE TABLE select_from_missing_semicolon_test (
+    hello INT,
+    goodbye INT
+);
+
+INSERT INTO select_from_missing_semicolon_test (hello)
+VALUES (1);
+
+SELECT * FROM select_from_missing_semicolon_test

@@ -1,5 +1,4 @@
-#ifndef LEXER
-#define LEXER
+#pragma once
 
 #include "structs_and_macros.h"
 #include <vector>
@@ -14,5 +13,3 @@ std::vector<token> lexer(std::string input_str);
 token create_token(keyword_enum keyword, std::string data, int line, int line_position);
 token parse_quoted_string(char type);
 
-
-#endif

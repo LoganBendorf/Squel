@@ -1,6 +1,4 @@
-#ifndef NODE_HEADER
-#define NODE_HEADER
-
+#pragma once
 
 #include <string>
 #include <vector>
@@ -8,6 +6,8 @@
 #include <sstream>
 
 #include "structs_and_macros.h"
+#include "helpers.h"
+
 
 class node {
     public:
@@ -30,13 +30,14 @@ class insert_into : public node {
     public:
     std::string inspect() override {
         std::stringstream output;
+        output << "insert_into: ";
         output << table_name << "\n";
         for (int i = 0; i < field_names.size(); i++) {
             output << field_names[i] << " ";
         }
         output << "\n";
         for (int i = 0; i < values.size(); i++) {
-            output << values[i] << " ";
+            output << "Type: " << keyword_enum_to_string(values[i].type) << ", data: " << values[i].data << " ";
         }
         output << "\n";
         return output.str();
@@ -49,13 +50,13 @@ class insert_into : public node {
     public:
     std::string table_name;
     std::vector<std::string> field_names;
-    std::vector<std::string> values;
+    std::vector<struct data_type_pair> values;
 };
 
 class select_from : public node {
     public:
     std::string inspect() override {
-        return table_name + "\n";
+        return "select_from: " + table_name + "\n";
     }
     std::string type() override {
         return std::string("select_from");
@@ -69,6 +70,7 @@ class create_table : public node {
     public:
     std::string inspect() override {
         std::stringstream output;
+        output << "create_table: ";
         output << table_name << "\n";
         for (int i = 0; i < column_datas.size(); i++) {
             output << column_datas[i].field_name << " " << column_datas[i].data_type << " "<< column_datas[i].default_value << " ";
@@ -85,5 +87,3 @@ class create_table : public node {
 
 };
 
-
-#endif

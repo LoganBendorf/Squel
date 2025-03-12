@@ -1,6 +1,7 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include "lexer.h"
 #include "structs_and_macros.h"
@@ -89,6 +90,17 @@ int main() {
         test(expected_tokens, input);
         std::cout << "Test 3 pass\n";
     }
+    {
+        std::string input = "-010.010"; // Use this is supposed to be weird. It's the PARSER's job to detect it
+        std::vector<token> expected_tokens = 
+                       {{MINUS,           "-",   1, 0},
+                        {INTEGER_LITERAL, "010", 1, 1},
+                        {DOT,             ".",   1, 4},
+                        {INTEGER_LITERAL, "010", 1, 5},
+                        };
+        test(expected_tokens, input);
+        std::cout << "Test 4 pass\n";
+    }
  
 }
 
@@ -106,7 +118,9 @@ void test(std::vector<token> expected_tokens, std::string test_input) {
     }
     for (int i = 0; i < tokens.size(); i++) {
         if (tokens[i].keyword != expected_tokens[i].keyword) {
-            printf("tokens had mismatching type. Actual (%s). Expected (%s)\n", keyword_enum_to_string[tokens[i].keyword].c_str(), keyword_enum_to_string[expected_tokens[i].keyword].c_str());
+            printf("tokens had mismatching type. Actual: %s (%s). Expected: %s (%s)\n", 
+                        tokens[i].data.c_str(), keyword_enum_to_string[tokens[i].keyword].c_str(),
+                        expected_tokens[i].data.c_str(), keyword_enum_to_string[expected_tokens[i].keyword].c_str());
             exit(1);
         }
         if (tokens[i].data != expected_tokens[i].data) {

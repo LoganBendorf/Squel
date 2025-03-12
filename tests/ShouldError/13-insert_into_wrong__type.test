@@ -1,0 +1,9 @@
+CREATE TABLE insert_into_wrong_data_type_test (
+    hello INT,
+    goodbye INT
+);
+
+INSERT INTO insert_into_wrong_data_type_test (hello)
+VALUES (string);
+
+SELECT * FROM insert_into_wrong_data_type_test;

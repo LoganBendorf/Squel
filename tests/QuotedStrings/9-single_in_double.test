@@ -1,0 +1,12 @@
+CREATE TABLE "single in double test ' " (
+    hello INT DEFAULT 12,
+    goodbye INT
+);
+
+INSERT INTO "single in double test ' " (hello)
+VALUES (1);
+
+INSERT INTO "single in double test ' "(goodbye)
+VALUES (2);
+
+SELECT * FROM "single in double test ' ";

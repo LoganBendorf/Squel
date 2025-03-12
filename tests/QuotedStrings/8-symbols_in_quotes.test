@@ -1,0 +1,12 @@
+CREATE TABLE "symbols in quotes test @!2" (
+    hello INT DEFAULT 12,
+    goodbye INT
+);
+
+INSERT INTO "symbols in quotes test @!2" (hello)
+VALUES (1);
+
+INSERT INTO "symbols in quotes test @!2" (goodbye)
+VALUES (2);
+
+SELECT * FROM "symbols in quotes test @!2";

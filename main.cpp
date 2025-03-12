@@ -1,35 +1,13 @@
 
+#include "pch.h"
 
-#include <qt5/QtWidgets/qapplication.h>
-//#include <QApplication>
-//#include <QWidget>
-#include <qt5/QtWidgets/QtWidgets>
-//#include <QVBoxLayout>
-#include <qt5/QtWidgets/QVBoxLayout>
-//#include <QPushButton>
-#include <qt5/QtWidgets/qpushbutton.h>
-//#include <QLineEdit>
-#include <qt5/QtWidgets/qlineedit.h>
-//#include <QLabel>
-#include <qt5/QtWidgets/qlabel.h>
-//#include <QGridLayout>
-#include <qt5/QtWidgets/qgridlayout.h>
-
-#include <iostream>
-#include <iomanip>
-#include <string>
-#include <vector>
-#include <algorithm>
-#include <functional>
-#include <sstream>
-#include <cstring>
-#include <cctype>
 
 #include "structs_and_macros.h"
 #include "test_reader.h"
 #include "lexer.h"
 #include "parser.h"
 #include "evaluator.h"
+#include "print.h"
 
 std::vector<std::string> errors;
 
@@ -44,48 +22,25 @@ std::vector<struct test> tests;
 // CURRENTLY WORKING ON:
 // CREATE TABLE
 // SELECT
-// INSERT <-------------------------------- DOESNT WORK!!!!!!!!!!!!!!!!!!!!!!!!!!!!!?
+// INSERT -----------> Working on types
 
-extern std::string keyword_enum_to_string[];
+static void display_errors(QGridLayout* commands_results_label);
+static void display_graphical_table(QGridLayout* table_grid);
 
-void print_column(table tab, int column_index) {
-
-    column_data col = tab.column_datas[column_index];
-
-    if (col.field_name.length() > 16) {
-        std::cout << "nah field name is too long to print";
-        exit(1);}
-
-    std::cout << col.field_name << std::endl;
-
-    for (int i = 0; i < tab.rows.size(); i++) {
-        std:: cout << tab.rows[column_index].column_values[i] << std::endl;
+static auto clear_layout = [](QLayout* layout) {
+    QLayoutItem* item;
+    while ((item = layout->takeAt(0)) != nullptr) {
+        delete item->widget(); // deletes the widget
+        delete item;           // deletes the layout item
     }
-}
+};
 
-
-void print_tokens(std::vector<token> tokens) {
-    std::cout << "PRINTING TOKENS ----------------\n";
-    for (int i = 0; i < tokens.size(); i++) {
-        std::cout << " Keyword: " << std::setw(15) << std::left << keyword_enum_to_string[tokens[i].keyword] + ","
-                                       << " Value: " << tokens[i].data << "\n";
-    }
-    std::cout << "DONE ---------------------------\n\n";
-}
-
-void print_nodes(std::vector<node*> nodes) {
-    std:: cout << "PRINTING NODES -----------------\n";
-    for (int i = 0; i < nodes.size(); i++) {
-        std::cout << std::to_string(i + 1) << ":\n" << nodes[i]->inspect();
-    }
-    std::cout << "DONE ---------------------------\n\n";
-}
 
 enum input_style {
     VISUAL, TEST
 };
 
-enum input_style input_style = TEST;
+constexpr enum input_style input_style = TEST;
 
 int main (int argc, char* argv[]) {
 
@@ -103,48 +58,98 @@ int main (int argc, char* argv[]) {
 
     QVBoxLayout* main_layout = new QVBoxLayout(&window);
 
-    QVBoxLayout* layout = new QVBoxLayout();
-    QLabel* enter_command_label = new QLabel("ENTER COMMAND:");
-    QLineEdit* input_line_edit = new QLineEdit();
-    QPushButton* submit_button = new QPushButton("Submit");
+    QWidget* fat_layout_container = new QWidget();
+    main_layout->addWidget(fat_layout_container);
 
+    QHBoxLayout* fat_layout = new QHBoxLayout(fat_layout_container);
+    fat_layout_container->setLayout(fat_layout);
+    
+    QVBoxLayout* scroll_area_container = new QVBoxLayout();
+    fat_layout->addLayout(scroll_area_container);
+    QPushButton* init_test_button = new QPushButton("init tests");
+    if (input_style == TEST) {
+        scroll_area_container->addWidget(init_test_button);
+    }
+    QScrollArea* scrollArea = new QScrollArea();
+    scrollArea->setWidgetResizable(true); 
+    scroll_area_container->addWidget(scrollArea);
+    QWidget* scroll_container = new QWidget();
+    scrollArea->setWidget(scroll_container);
+    QVBoxLayout* scrollLayout = new QVBoxLayout(scroll_container);
+    scroll_container->setLayout(scrollLayout);
+    scrollLayout->setAlignment(Qt::AlignTop);
+    scrollLayout->setSpacing(5); 
+
+    // for (int i = 0; i < 5 ; i++) {
+    //     scrollLayout->addWidget(new QLabel(QString("Label %1").arg(i + 1)));
+    // }
+
+    scroll_container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    scroll_container->setMinimumHeight(700);  // Adjust this based on content size
+    scrollArea->setFixedHeight(600);
+    scrollArea->setFixedWidth(400);
+    fat_layout_container->setFixedHeight(600);
+
+    QVBoxLayout* layout = new QVBoxLayout();
+    fat_layout->addLayout(layout);  // Input and submit
+
+    QLabel* enter_command_label = new QLabel("ENTER COMMAND:");
     layout->addWidget(enter_command_label);
-    layout->addWidget(input_line_edit);
+
+    QTextEdit* input_text_edit = new QTextEdit();
+    input_text_edit->setTabStopDistance(4 * QFontMetrics(input_text_edit->font()).horizontalAdvance(' ')); // Tab size
+    layout->addWidget(input_text_edit);
+
+    QPushButton* submit_button = new QPushButton("Submit");
     layout->addWidget(submit_button);
+
+
+    
 
     QVBoxLayout* test_info_layout;
     QLabel* current_test_marker_label;
     QLabel* current_test_label;
-    QPushButton* init_test_button;
+    QFrame* test_frame = new QFrame();
     if (input_style == TEST) {
         test_info_layout = new QVBoxLayout();
         current_test_marker_label = new QLabel("Current test:");
         current_test_label = new QLabel();
-        init_test_button = new QPushButton("init tests");
 
         test_info_layout->addWidget(current_test_marker_label);
         test_info_layout->addWidget(current_test_label);
-        test_info_layout->addWidget(init_test_button);
 
-        main_layout->addLayout(test_info_layout);
+        test_frame->setStyleSheet("background-color: #007ACC; color: white; font: 12pt 'Arial'; padding: 10px; border: 2px solid white; border-radius: 20px;");
+        test_frame->setLayout(test_info_layout);
+
+        layout->addWidget(test_frame);
     }
 
-    main_layout->addLayout(layout);  // Input and submit
-
-    QGridLayout* label_command_results = new QGridLayout();
-    main_layout->addLayout(label_command_results);
+    QGridLayout* commands_results_label = new QGridLayout();
+    main_layout->addLayout(commands_results_label);
 
     // Table grid
-    QGridLayout* table_grid = new QGridLayout();
-    main_layout->addLayout(table_grid);
+    QFrame* table_frame = new QFrame();
+    table_frame->setStyleSheet("background-color: #a8dadc; color:rgb(34, 55, 66); font: 14pt 'Arial'; padding: 5px; border: 2px solid white; border-radius: 4px;");
+    QGridLayout* table_grid = new QGridLayout(table_frame);
+    table_frame->setLayout(table_grid);
+    main_layout->addWidget(table_frame);
+        
 
-    auto clear_layout = [](QLayout* layout) {
-        QLayoutItem* item;
-        while ((item = layout->takeAt(0)) != nullptr) {
-            delete item->widget(); // deletes the widget
-            delete item;           // deletes the layout item
-        }
-    };
+
+    // Clear tables
+    QPushButton* clear_tables_button = new QPushButton("Clear tables");
+    clear_tables_button->setStyleSheet(
+        "QPushButton { background-color:rgb(200, 81, 57); color: white; border: 2px solid rgb(52, 26, 21); border-radius: 10px; padding: 5px; }"
+        "QPushButton:hover { background-color: rgb(171, 65, 44); }"
+        "QPushButton:pressed { background-color: rgb(76, 29, 20); }" // This restores the press animation
+    );    
+    main_layout->insertWidget(0, clear_tables_button);
+    QObject::connect(clear_tables_button, &QPushButton::clicked, [&] () {
+        tables.clear();
+        // Maybe should also clear the display table?
+        std::cout << "Tables cleared" << std::endl;
+    });
+
 
     auto toggle_show_test_children = [](QLayout* layout) {
         for (int i = 0; i < layout->count(); ++i) {
@@ -158,24 +163,26 @@ int main (int argc, char* argv[]) {
         }
     };
 
-    // NEED A BUTTON FOR EACH FOLDER !!!!!!!!!!! WAH CURRENTLY MAKES 1 BUTTON LOL :((((((
+    // table_grid->itemAt(0);
 
-    QObject::connect(init_test_button, &QPushButton::clicked, [&, test_info_layout]() {\
+    // Folding finding in tests isn't recursive, so no triple folders rn
+
+    QObject::connect(init_test_button, &QPushButton::clicked, [&]() {\
         tests = init_read_test();
-        test_info_layout->removeWidget(init_test_button);
+        scroll_area_container->removeWidget(init_test_button);
         init_test_button->hide();
         init_test_button->deleteLater();
         
-        QVBoxLayout* tests_layout = new QVBoxLayout();
-        test_info_layout->addLayout(tests_layout);
 
+        // FOLDER BUTTONS
         for (int i = 0; i < tests.size(); i++) {
             struct test test = tests[i];
             QPushButton* folder_show_button = new QPushButton(test.folder_name.c_str());
-            tests_layout->addWidget(folder_show_button);
+            folder_show_button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); 
+            scrollLayout->addWidget(folder_show_button);
 
             QVBoxLayout* test_layout = new QVBoxLayout();
-            tests_layout->addLayout(test_layout);
+            scrollLayout->addLayout(test_layout);
 
             test_layout->setContentsMargins(20, 0, 0, 0);  // Left, top, right, bottom margins
 
@@ -185,14 +192,17 @@ int main (int argc, char* argv[]) {
             });
 
             
+            // INDIVIDUAL TESTS
+
             for (int j = 0; j < tests[i].test_paths.size(); j++) {
                 std::string path = test.test_paths[j];
-                path = path.substr(test.folder_name.length(), path.length());
+                path = path.substr(test.folder_name.length() + 1, path.length());
                 std::string button_name = path + ": Start test";
 
                 QPushButton* test_start_button = new QPushButton(button_name.c_str());
-
                 test_layout->addWidget(test_start_button);
+                test_start_button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); 
+                test_start_button->setStyleSheet("text-align: left; padding-left: 15px;");
 
                 test_start_button->hide();
                 
@@ -223,47 +233,14 @@ int main (int argc, char* argv[]) {
                     eval();
             
                     if (!errors.empty()) {
-                        //clear_layout(table_grid);
-                        display_tab.to_display = false;
-                        clear_layout(label_command_results);
-                        QLabel* label_error = new QLabel("Errors:");
-                        label_command_results->addWidget(label_error, 0, 0);
-                        for (int i = 0; i < errors.size(); i++) {
-                            std::cout << "ERROR: " + errors[i] + "\n";
-                            QLabel* label_results = new QLabel(QString::fromStdString(errors[i]));
-                            int y = i + 1;
-                            int x = 0;
-                            label_command_results->addWidget(label_results, y, x);
-                        }
-                        errors.clear();
+                        display_errors(commands_results_label);
                     } else {
-                        clear_layout(label_command_results);
-                        QLabel* label_results = new QLabel("No errors");
-                        label_command_results->addWidget(label_results, 0, 0);
+                        clear_layout(commands_results_label);
+                        QLabel* results_label = new QLabel("No errors");
+                        commands_results_label->addWidget(results_label, 0, 0);
             
                         if (display_tab.to_display) {
-                            // Select items grid
-                            clear_layout(table_grid);  
-                        
-                            table tab = display_tab.tab;
-            
-                            table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)));
-            
-                            // Column names
-                            for (int i = 0; i < tab.column_datas.size(); i++) {
-                                int y = 1; 
-                                int x = i;  // can overflow
-                                table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[i].field_name)), y, x);
-                            }
-            
-                            // Row data
-                            for (int i = 1; i < tab.rows.size(); i++) {
-                                for (int j = 0; j < tab.rows[0].column_values[0].size(); j++) {
-                                    int y = i + 1;
-                                    int x = j;
-                                    table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
-                                }
-                            }
+                            display_graphical_table(table_grid);
                         }
                     }
 
@@ -276,7 +253,7 @@ int main (int argc, char* argv[]) {
     QObject::connect(submit_button, &QPushButton::clicked, [&]() {
 
         // Input
-        QString qt_input = input_line_edit->text();
+        QString qt_input = input_text_edit->toPlainText();
         input = qt_input.toUtf8().constData();
 
 
@@ -298,51 +275,20 @@ int main (int argc, char* argv[]) {
         eval();
 
         if (!errors.empty()) {
-            //clear_layout(table_grid);
-            clear_layout(label_command_results);
-            QLabel* label_error = new QLabel("Errors:");
-            label_command_results->addWidget(label_error, 0, 0);
-            for (int i = 0; i < errors.size(); i++) {
-                std::cout << "ERROR: " + errors[i] + "\n";
-                QLabel* label_results = new QLabel(QString::fromStdString(errors[i]));
-                int y = i + 1;
-                int x = 0;
-                label_command_results->addWidget(label_results, y, x);
-            }
+            display_errors(commands_results_label);
         } else {
-            clear_layout(label_command_results);
-            QLabel* label_results = new QLabel("No errors");
-            label_command_results->addWidget(label_results, 0, 0);
+            clear_layout(commands_results_label);
+            QLabel* results_label = new QLabel("No errors");
+            commands_results_label->addWidget(results_label, 0, 0);
 
            if (display_tab.to_display) {
-                // Select items grid
-                clear_layout(table_grid);  
-            
-                table tab = display_tab.tab;
-
-                table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)));
-
-                // Column names
-                for (int i = 0; i < tab.column_datas.size(); i++) {
-                    int y = 1; 
-                    int x = i;  // can overflow
-                    table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[i].field_name)), y, x);
-                }
-
-                // Row data
-                for (int i = 1; i < tab.rows.size(); i++) {
-                    for (int j = 0; j < tab.rows[0].column_values[0].size(); j++) {
-                        int y = i + 1;
-                        int x = j;
-                        table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
-                    }
-                }
+                display_graphical_table(table_grid);
             }
         }
 
         // Clean up for next loop
         display_tab.to_display = false;
-        input_line_edit->clear();
+        // input_text_edit->clear();
         errors.clear();
         tokens.clear();
 
@@ -351,4 +297,43 @@ int main (int argc, char* argv[]) {
     window.show();
 
     return app.exec();
+}
+
+static void display_errors(QGridLayout* commands_results_label) {
+    display_tab.to_display = false;
+    clear_layout(commands_results_label);
+    QLabel* error_label = new QLabel("Errors:");
+    commands_results_label->addWidget(error_label, 0, 0);
+    for (int i = 0; i < errors.size(); i++) {
+        std::cout << "ERROR: " + errors[i] + "\n";
+        QLabel* results_label = new QLabel(QString::fromStdString(errors[i]));
+        int y = i + 1;
+        int x = 0;
+        commands_results_label->addWidget(results_label, y, x);
+    }
+    errors.clear();
+}
+
+static void display_graphical_table(QGridLayout* table_grid) {
+    clear_layout(table_grid);  
+                        
+    table tab = display_tab.tab;
+
+    table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)), 0, 0);
+
+    // Column names
+    for (int i = 0; i < tab.column_datas.size(); i++) {
+        int y = 1; 
+        int x = i;  // can overflow
+        table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[i].field_name)), y, x);
+    }
+
+    // Row data
+    for (int i = 0; i < tab.rows.size(); i++) {
+        for (int j = 0; j < tab.rows[0].column_values.size(); j++) {
+            int y = i + 2;
+            int x = j;
+            table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
+        }
+    }
 }

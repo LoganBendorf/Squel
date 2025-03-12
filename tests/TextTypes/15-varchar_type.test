@@ -1,0 +1,10 @@
+CREATE TABLE varchar_type_test (
+    hello VARCHAR(20),
+    goodbye VARCHAR(20)
+);
+
+INSERT INTO varchar_type_test (hello)
+VALUES (smile);
+
+SELECT * FROM varchar_type_test;
+

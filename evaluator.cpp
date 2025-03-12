@@ -1,13 +1,19 @@
 
+#include "evaluator.h"
 #include "node.h"
 #include "structs_and_macros.h"
-#include "evaluator.h"
+#include "helpers.h"
 
 extern std::vector<std::string> errors;
 extern std::vector<table> tables;
-extern display_table display_tab;;
+extern display_table display_tab;
 
 static std::vector<node*> nodes;
+
+static void eval_create_table(const create_table* info);
+static void eval_select_from(const select_from* info);
+static void print_table(table tab);
+static void eval_insert_into(const insert_into* info);
 
 #define eval_push_error_return(x)               \
         std::string error = x;                  \
@@ -40,7 +46,7 @@ void eval() {
     }
 }
 
-void eval_create_table(const create_table* info) {
+static void eval_create_table(const create_table* info) {
 
     for (int i = 0; i < tables.size(); i++) {
         if (tables[i].name == info->table_name) {
@@ -56,7 +62,7 @@ void eval_create_table(const create_table* info) {
     tables.push_back(tab);
 }
 
-void eval_select_from(const select_from* info) {
+static void eval_select_from(const select_from* info) {
 
     table tab;
     bool found = false;
@@ -80,7 +86,7 @@ void eval_select_from(const select_from* info) {
     display_tab.tab = tab;
 }
 
-void print_table(table tab) {
+static void print_table(table tab) {
 
     for (int i = 0; i < tab.column_datas.size(); i++) {
         std::string name = tab.column_datas[i].field_name;
@@ -108,7 +114,7 @@ void print_table(table tab) {
     std::cout << std::endl;
 }
 
-void eval_insert_into(const insert_into* info) {
+static void eval_insert_into(const insert_into* info) {
 
     table* tab_ptr;
     bool table_found = false;
@@ -131,17 +137,41 @@ void eval_insert_into(const insert_into* info) {
     if (info->field_names.size() > tab_ptr->column_datas.size()) {
         eval_push_error_return("INSERT INTO, more field names than table has columns");}
 
-    // Currently not checking anyting cause i dont feel like it rn
-
     row roh;
     int j = 0;
-    for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
-        if (tab_ptr->column_datas[i].field_name == info->field_names[j]) {
-            roh.column_values.push_back(info->values[j]);
-            j++;
-            continue;
+    if (info->field_names.size() > 0) {
+        for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
+            if (tab_ptr->column_datas[i].field_name == info->field_names[j]) {
+                data_type_pair pair = info->values[j];
+                if (pair.type == INTEGER_LITERAL) {
+                    if (!is_integer_data_type(tab_ptr->column_datas[i].data_type)) {
+                        errors.push_back("eval_insert_into(): Value: (" + pair.data + ") has mismatching type with column (" + tab_ptr->column_datas[i].data_type + ")");
+                        return;
+                    }
+                } else if (pair.type == STRING_LITERAL) {
+                    if (!is_string_data_type(tab_ptr->column_datas[i].data_type)) {
+                        errors.push_back("eval_insert_into(): Value: (" + pair.data + ") has mismatching type with column(" + tab_ptr->column_datas[i].data_type + ")");
+                        return;
+                    }
+                } else {
+                    errors.push_back("eval_insert_into(): Value: (" + pair.data + "), type: (" + keyword_enum_to_string(pair.type) + ") probably shouldn't be able to insert this");
+                    return;
+                }
+                roh.column_values.push_back(info->values[j].data);
+                j++;
+                continue;
+            }
+            roh.column_values.push_back(tab_ptr->column_datas[i].default_value);
         }
-        roh.column_values.push_back(tab_ptr->column_datas[i].default_value);
+    } else {
+        for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
+            if (j < info->values.size()) {
+                roh.column_values.push_back(info->values[j].data);
+                j++;
+                continue;
+            }
+            roh.column_values.push_back(tab_ptr->column_datas[i].default_value);
+        }
     }
 
     if (j < info->values.size()) {

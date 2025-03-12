@@ -1,0 +1,12 @@
+CREATE TABLE 'single_quote_test' (
+    hello INT DEFAULT 12,
+    goodbye INT
+);
+
+INSERT INTO 'single_quote_test' (hello)
+VALUES (1);
+
+INSERT INTO 'single_quote_test' (goodbye)
+VALUES (2);
+
+SELECT * FROM 'single_quote_test';

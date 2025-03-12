@@ -1,0 +1,12 @@
+CREATE TABLE "double_quote_test" (
+    hello INT DEFAULT 12,
+    goodbye INT
+);
+
+INSERT INTO "double_quote_test" (hello)
+VALUES (1);
+
+INSERT INTO "double_quote_test" (goodbye)
+VALUES (2);
+
+SELECT * FROM "double_quote_test";

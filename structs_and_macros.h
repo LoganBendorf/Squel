@@ -1,19 +1,12 @@
 
-#ifndef STRUCTS_AND_MACROS
-#define STRUCTS_AND_MACROS
+#pragma once
 
-#include <iostream>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <functional>
-#include <sstream>
-#include <cstring>
-#include <cctype>
 
 enum keyword_enum {
     CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,
-     COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA, QUOTE, BOOL
+     COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA, QUOTE, BOOL, MINUS, DOT, DECIMAL_LITERAL
 };
 
 typedef struct token {
@@ -51,4 +44,16 @@ struct test {
     int current_test_num = 0;
 };
 
-#endif
+typedef struct data_type_pair {
+    keyword_enum type;
+    std::string data;
+} data_type_pair;
+
+enum object_type {
+    ERROR, INTEGER_EXPRESSION
+};
+
+typedef struct object {
+    object_type type;
+    std::string value;
+};
