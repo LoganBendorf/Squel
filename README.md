@@ -1,3 +1,1 @@
-run "cmake -B build -G Ninja
-ninja -C build
-"
+run qmake then make
