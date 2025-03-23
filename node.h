@@ -1,12 +1,14 @@
 #pragma once
 
+#include "structs_and_macros.h"
+#include "helpers.h"
+#include "object.h"
+
 #include <string>
 #include <vector>
 #include <iostream>
 #include <sstream>
 
-#include "structs_and_macros.h"
-#include "helpers.h"
 
 
 class node {
@@ -32,12 +34,14 @@ class insert_into : public node {
         std::stringstream output;
         output << "insert_into: ";
         output << table_name << "\n";
+        output << "[";
         for (int i = 0; i < field_names.size(); i++) {
             output << field_names[i] << " ";
         }
+        output << "]";
         output << "\n";
         for (int i = 0; i < values.size(); i++) {
-            output << "Type: " << keyword_enum_to_string(values[i].type) << ", data: " << values[i].data << " ";
+            output  << values[i]->inspect() << " ";
         }
         output << "\n";
         return output.str();
@@ -50,7 +54,7 @@ class insert_into : public node {
     public:
     std::string table_name;
     std::vector<std::string> field_names;
-    std::vector<struct data_type_pair> values;
+    std::vector<object*> values;
 };
 
 class select_from : public node {
@@ -73,7 +77,7 @@ class create_table : public node {
         output << "create_table: ";
         output << table_name << "\n";
         for (int i = 0; i < column_datas.size(); i++) {
-            output << column_datas[i].field_name << " " << column_datas[i].data_type << " "<< column_datas[i].default_value << " ";
+            output << column_datas[i].field_name << " " << column_datas[i].data_type->inspect() << ". [Default: " << column_datas[i].default_value << "] ";
         }
         output << "\n";
         return output.str();

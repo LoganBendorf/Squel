@@ -24,7 +24,7 @@ void print_column(table tab, int column_index) {
 void print_tokens(std::vector<token> tokens) {
     std::cout << "PRINTING TOKENS ----------------\n";
     for (int i = 0; i < tokens.size(); i++) {
-        std::cout << " Keyword: " << std::setw(15) << std::left << keyword_enum_to_string(tokens[i].keyword) + ","
+        std::cout << " Keyword: " << std::setw(15) << std::left << token_type_to_string(tokens[i].type) + ","
                                        << " Value: " << tokens[i].data << "\n";
     }
     std::cout << "DONE ---------------------------\n\n";

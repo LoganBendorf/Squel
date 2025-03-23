@@ -1,16 +1,19 @@
 
 #pragma once
 
+#include "object.h"
+
 #include <string>
 #include <vector>
 
-enum keyword_enum {
+enum token_type {
     CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,
-     COMMA, ASTERISK, LINE_END, ILLEGAL, NEW_LINE, DATA, QUOTE, BOOL, MINUS, DOT, DECIMAL_LITERAL
+     COMMA, LINE_END, ILLEGAL, NEW_LINE, QUOTE, DOT, TRUE, FALSE, OPEN_BRACKET, CLOSE_BRACKET,
+      EQUAL, NOT_EQUAL, LESS_THAN, GREATER_THAN, PLUS, MINUS, SLASH, ASTERISK, BANG
 };
 
 typedef struct token {
-    keyword_enum keyword;
+    token_type type;
     std::string data;
     int line;
     int position;
@@ -18,7 +21,7 @@ typedef struct token {
 
 typedef struct column_data {
     std::string field_name;
-    std::string data_type;
+    SQL_data_type_object* data_type;
     std::string default_value;
 } column_data;
 
@@ -42,18 +45,4 @@ struct test {
     std::vector<std::string> test_paths;
     int max_tests = 0;
     int current_test_num = 0;
-};
-
-typedef struct data_type_pair {
-    keyword_enum type;
-    std::string data;
-} data_type_pair;
-
-enum object_type {
-    ERROR, INTEGER_EXPRESSION
-};
-
-typedef struct object {
-    object_type type;
-    std::string value;
 };

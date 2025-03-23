@@ -39,8 +39,8 @@ static int read_number() {
     }
 }
 
-static token create_token(keyword_enum keyword, std::string data, int line, int line_position) {
-    return token{keyword, data, line, line_position};
+static token create_token(token_type type, std::string data, int line, int line_position) {
+    return token{type, data, line, line_position};
 }
 
 // Needs MORE testing
@@ -100,6 +100,44 @@ std::vector<token> lexer(std::string input_str) {
     while (input_position < input.length()) {
 
     switch (input[input_position]) {
+
+        case '*': {
+            token tok = create_token(ASTERISK, "*", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
+        case '/': {
+            token tok = create_token(SLASH, "/", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
+        case '+': {
+            token tok = create_token(PLUS, "+", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
+        case '!': {
+            if (input_position + 1 < input.length()  && input[input_position] == '=') {
+                token tok = create_token(NOT_EQUAL, "!=", line_count, line_position_count);
+                tokens.push_back(tok);
+                input_position++;
+                line_position_count++;
+                break;
+            }
+            token tok = create_token(BANG, "!", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
+        case '=': {
+            token tok = create_token(EQUAL, "=", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
         case '.': {
             token tok = create_token(DOT, ".", line_count, line_position_count);
             tokens.push_back(tok);
@@ -174,12 +212,6 @@ std::vector<token> lexer(std::string input_str) {
             input_position++;
             line_position_count++;
         } break;
-        case '*': {
-            token tok = create_token(ASTERISK, "*", line_count, line_position_count);
-            tokens.push_back(tok);
-            input_position++;
-            line_position_count++;
-        } break;
         default: {
             if (std::isalpha(input[input_position])) {
                 int start = read_string();
@@ -220,12 +252,12 @@ std::vector<token> lexer(std::string input_str) {
                     line_position_count += word.size();
                     continue;
                 } else if (word == "true") {
-                    token tok = create_token(BOOL, "true", line_count, line_position_count);
+                    token tok = create_token(TRUE, "true", line_count, line_position_count);
                     tokens.push_back(tok);
                     line_position_count += word.size();
                     continue;
                 } else if (word == "false") {
-                    token tok = create_token(BOOL, "false", line_count, line_position_count);
+                    token tok = create_token(FALSE, "false", line_count, line_position_count);
                     tokens.push_back(tok);
                     line_position_count += word.size();
                     continue;

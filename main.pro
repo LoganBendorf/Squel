@@ -2,7 +2,11 @@ QT += widgets
 TEMPLATE = app
 SOURCES += main.cpp lexer.cpp parser.cpp evaluator.cpp helpers.cpp test_reader.cpp print.cpp
 HEADERS += lexer.h parser.h evaluator.h helpers.h test_reader.h structs_and_macros.h node.h print.h
-TARGET = myApp
+TARGET = squel
+
+DESTDIR = build
+OBJECTS_DIR = build
+
 
 
 # Suppress warnings

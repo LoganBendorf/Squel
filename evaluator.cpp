@@ -3,6 +3,7 @@
 #include "node.h"
 #include "structs_and_macros.h"
 #include "helpers.h"
+#include "object.h"
 
 extern std::vector<std::string> errors;
 extern std::vector<table> tables;
@@ -128,36 +129,37 @@ static void eval_insert_into(const insert_into* info) {
     if (info->values.size() == 0) {
         eval_push_error_return("INSERT INTO, no values");}
 
-    if (!table_found) {
-        eval_push_error_return("INSERT INTO, table not found");}
-
     if (info->field_names.size() < info->values.size()) {
         eval_push_error_return("INSET INTO, more values than field names");}
 
     if (info->field_names.size() > tab_ptr->column_datas.size()) {
         eval_push_error_return("INSERT INTO, more field names than table has columns");}
 
+    if (!table_found) { // More important errors should go last so basic mistakes are fixed first???
+        eval_push_error_return("INSERT INTO, table not found");}
+
     row roh;
     int j = 0;
     if (info->field_names.size() > 0) {
         for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
             if (tab_ptr->column_datas[i].field_name == info->field_names[j]) {
-                data_type_pair pair = info->values[j];
-                if (pair.type == INTEGER_LITERAL) {
+                object* obj = info->values[j];
+                switch (obj->type()) {
+                case INTEGER_OBJ: {
                     if (!is_integer_data_type(tab_ptr->column_datas[i].data_type)) {
-                        errors.push_back("eval_insert_into(): Value: (" + pair.data + ") has mismatching type with column (" + tab_ptr->column_datas[i].data_type + ")");
-                        return;
-                    }
-                } else if (pair.type == STRING_LITERAL) {
+                        errors.push_back("eval_insert_into(): Value: (" + obj->data() + ") has mismatching type with column (" + tab_ptr->column_datas[i].data_type->inspect() + ")");
+                        return;}
+                } break;
+                case STRING_OBJ: {
                     if (!is_string_data_type(tab_ptr->column_datas[i].data_type)) {
-                        errors.push_back("eval_insert_into(): Value: (" + pair.data + ") has mismatching type with column(" + tab_ptr->column_datas[i].data_type + ")");
-                        return;
-                    }
-                } else {
-                    errors.push_back("eval_insert_into(): Value: (" + pair.data + "), type: (" + keyword_enum_to_string(pair.type) + ") probably shouldn't be able to insert this");
+                        errors.push_back("eval_insert_into(): Value: (" + obj->data() + ") has mismatching type with column(" + tab_ptr->column_datas[i].data_type->inspect() + ")");
+                        return;}
+                } break;
+                default:
+                    errors.push_back("eval_insert_into(): Value: (" + obj->data() + "), type: (" + obj->inspect() + ") probably shouldn't be able to insert this");
                     return;
                 }
-                roh.column_values.push_back(info->values[j].data);
+                roh.column_values.push_back(info->values[j]->data());
                 j++;
                 continue;
             }
@@ -166,7 +168,7 @@ static void eval_insert_into(const insert_into* info) {
     } else {
         for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
             if (j < info->values.size()) {
-                roh.column_values.push_back(info->values[j].data);
+                roh.column_values.push_back(info->values[j]->data());
                 j++;
                 continue;
             }
