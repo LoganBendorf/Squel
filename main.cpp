@@ -10,6 +10,7 @@
 #include "print.h"
 
 std::vector<std::string> errors;
+std::vector<std::string> warnings;
 
 std::vector<table> tables;
 
@@ -169,6 +170,12 @@ int main (int argc, char* argv[]) {
 
     QObject::connect(init_test_button, &QPushButton::clicked, [&]() {\
         tests = init_read_test();
+
+        // Alphabetical sort
+        std::sort(tests.begin(), tests.end(), [](const test& a, const test& b) {
+            return a.folder_name < b.folder_name;
+        });
+    
         scroll_area_container->removeWidget(init_test_button);
         init_test_button->hide();
         init_test_button->deleteLater();
@@ -244,6 +251,15 @@ int main (int argc, char* argv[]) {
                         }
                     }
 
+                    if (!warnings.empty()) {
+                        std::cout << "WARNINGS ----------------\n";
+                        for (int i = 0; i < warnings.size(); i++) {
+                            std::cout << "WARNING: " << warnings[i] << std::endl;
+                        }
+                        std::cout << "DONE ---------------------------\n\n";
+                    }
+                    warnings.clear();
+
                 });
             }
         }
@@ -286,6 +302,15 @@ int main (int argc, char* argv[]) {
             }
         }
 
+        if (!warnings.empty()) {
+            std::cout << "WARNINGS ----------------\n";
+            for (int i = 0; i < warnings.size(); i++) {
+                std::cout << "WARNING: " << warnings[i] << std::endl;
+            }
+            std::cout << "DONE ---------------------------\n\n";
+        }
+        warnings.clear();
+
         // Clean up for next loop
         display_tab.to_display = false;
         // input_text_edit->clear();
@@ -321,19 +346,42 @@ static void display_graphical_table(QGridLayout* table_grid) {
 
     table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)), 0, 0);
 
+    if (display_tab.column_names.size() == 0) {
+        return;}
+
     // Column names
-    for (int i = 0; i < tab.column_datas.size(); i++) {
+    std::vector<int> row_indexes;
+    int j = 0;
+    for (int i = 0; i < display_tab.column_names.size(); i++) {
+        while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
+            j++;}
+        row_indexes.push_back(j);
         int y = 1; 
         int x = i;  // can overflow
-        table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[i].field_name)), y, x);
+        table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[j].field_name)), y, x);
     }
 
-    // Row data
+    // for (row in rows) {
+    //     for (index in row_indexes) {
+    //         display row
+    //     }
+    // }
     for (int i = 0; i < tab.rows.size(); i++) {
-        for (int j = 0; j < tab.rows[0].column_values.size(); j++) {
+        for (int j = 0; j < row_indexes.size(); j++) {
             int y = i + 2;
             int x = j;
             table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
         }
     }
+
+
+
+    // // Row data
+    // for (int i = 0; i < tab.rows.size(); i++) {
+    //     for (int j = 0; j < tab.rows[0].column_values.size(); j++) {
+    //         int y = i + 2;
+    //         int x = j;
+    //         table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
+    //     }
+    // }
 }

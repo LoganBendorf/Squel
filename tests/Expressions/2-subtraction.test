@@ -1,0 +1,12 @@
+CREATE TABLE subtraction_test (
+    hello INT DEFAULT 12-2,
+    goodbye INT
+);
+
+INSERT INTO subtraction_test (hello)
+VALUES (4-1);
+
+INSERT INTO subtraction_test (goodbye)
+VALUES (2-1);
+
+SELECT * FROM subtraction_test;

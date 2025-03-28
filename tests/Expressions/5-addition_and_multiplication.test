@@ -1,0 +1,12 @@
+CREATE TABLE add_and_mult_test (
+    hello INT DEFAULT 12+2*2,
+    goodbye INT
+);
+
+INSERT INTO add_and_mult_test (hello)
+VALUES (1+4*2);
+
+INSERT INTO add_and_mult_test (goodbye)
+VALUES (2+1*2);
+
+SELECT * FROM add_and_mult_test;

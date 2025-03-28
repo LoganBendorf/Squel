@@ -1,6 +1,7 @@
 
 
-#include "structs_and_macros.h"
+#include "token.h"
+#include <vector>
 
 
 extern std::vector<std::string> errors;

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "structs_and_macros.h"
+#include "token.h"
+
 #include <vector>
 #include <string>
 

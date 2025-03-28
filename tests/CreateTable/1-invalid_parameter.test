@@ -1,0 +1,7 @@
+CREATE TABLE invalid_parameter_test (
+    hello VARCHAR(0)
+);
+
+CREATE TABLE invalid_parameter_test (
+    hello VARCHAR(-1)
+);

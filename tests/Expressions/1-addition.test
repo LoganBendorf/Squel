@@ -1,0 +1,12 @@
+CREATE TABLE addition_test (
+    hello INT DEFAULT 12+2,
+    goodbye INT
+);
+
+INSERT INTO addition_test (hello)
+VALUES (1+4);
+
+INSERT INTO addition_test (goodbye)
+VALUES (2+1);
+
+SELECT * FROM addition_test;

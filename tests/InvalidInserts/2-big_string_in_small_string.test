@@ -1,0 +1,8 @@
+CREATE TABLE big_string_in_small_int_test (
+    hello VARCHAR(5)
+);
+
+INSERT INTO big_string_in_small_int_test (hello)
+VALUES (BigString);
+
+SELECT * FROM big_string_in_small_int_test;

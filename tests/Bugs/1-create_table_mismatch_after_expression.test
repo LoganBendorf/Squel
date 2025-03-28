@@ -1,0 +1,7 @@
+CREATE TABLE no_expression (
+    hello INT
+);
+
+CREATE TABLE expression (
+    hello VARCHAR(20)
+);

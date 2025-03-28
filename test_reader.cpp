@@ -28,9 +28,9 @@ std::vector<struct test> init_read_test() {
         }
     }
 
+    // Sort tests in folder
     for (int i = 0; i < tests.size(); i++) {
         std::sort(tests[i].test_paths.begin(), tests[i].test_paths.end());
-
     }
     
     if (tests.size() == 0) {

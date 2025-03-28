@@ -1,0 +1,8 @@
+CREATE TABLE double_test (
+    hello DOUBLE
+);
+
+INSERT INTO double_test (hello)
+VALUES (1);
+
+SELECT * FROM double_test;

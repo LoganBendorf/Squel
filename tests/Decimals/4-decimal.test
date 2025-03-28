@@ -1,0 +1,8 @@
+CREATE TABLE decimal_test (
+    hello DECIMAL
+);
+
+INSERT INTO decimal_test (hello)
+VALUES (1);
+
+SELECT * FROM decimal_test;

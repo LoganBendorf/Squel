@@ -18,7 +18,7 @@ class node {
     virtual ~node() {};
 };
 
-class null : public node {
+class null_node : public node {
     public:
     std::string inspect() override {
         return std::string("nada");
@@ -58,16 +58,28 @@ class insert_into : public node {
 };
 
 class select_from : public node {
+    
     public:
+    select_from() {
+        asterisk = false;}
     std::string inspect() override {
-        return "select_from: " + table_name + "\n";
+        std::string str = "select_from: " + table_name + "\n";
+        for (int i = 0; i < column_names.size() - 1 && column_names.size() > 0; i++) {
+            str += column_names[i] + ", ";}
+
+        if (column_names.size() > 0) {
+            str += column_names[column_names.size() - 1];}
+        str += "\n";
+        return str;
+
     }
     std::string type() override {
-        return std::string("select_from");
-    }
+        return std::string("select_from");}
 
     public:
     std::string table_name;
+    std::vector<std::string> column_names;
+    bool asterisk;
 };
 
 class create_table : public node {

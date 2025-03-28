@@ -1,0 +1,8 @@
+CREATE TABLE string_in_int_test (
+    hello INT
+);
+
+INSERT INTO string_in_int_test (hello)
+VALUES (bruh);
+
+SELECT * FROM string_in_int_test;

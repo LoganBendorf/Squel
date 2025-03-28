@@ -1,0 +1,9 @@
+CREATE TABLE column_test (
+    hello INT,
+    goodbye INT
+);
+
+INSERT INTO column_test (hello, goodbye)
+VALUES (1, 2);
+
+SELECT hello FROM column_test;

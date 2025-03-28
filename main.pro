@@ -1,7 +1,7 @@
 QT += widgets
 TEMPLATE = app
-SOURCES += main.cpp lexer.cpp parser.cpp evaluator.cpp helpers.cpp test_reader.cpp print.cpp
-HEADERS += lexer.h parser.h evaluator.h helpers.h test_reader.h structs_and_macros.h node.h print.h
+SOURCES += evaluator.cpp helpers.cpp lexer.cpp main.cpp parser.cpp print.cpp test_reader.cpp
+HEADERS += evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h
 TARGET = squel
 
 DESTDIR = build

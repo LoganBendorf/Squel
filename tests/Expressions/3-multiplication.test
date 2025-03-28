@@ -1,0 +1,12 @@
+CREATE TABLE multiplication_test (
+    hello INT DEFAULT 12*2,
+    goodbye INT
+);
+
+INSERT INTO multiplication_test (hello)
+VALUES (1*4);
+
+INSERT INTO multiplication_test (goodbye)
+VALUES (2*1);
+
+SELECT * FROM multiplication_test;

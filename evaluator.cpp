@@ -75,41 +75,80 @@ static void eval_select_from(const select_from* info) {
     }
     
     if (!found) {
-        errors.push_back("eval_select_from(): Table not found");
+        errors.push_back("eval_select_from(): Table not found (" + info->table_name + ")");
         return;}
 
-    std::cout << info->table_name << ":\n";
 
-    print_table(tab);
-
-    // For Qt
     display_tab.to_display = true;
     display_tab.tab = tab;
+    display_tab.column_names = info->column_names;
+    if (info->asterisk == true) {
+        for (int i = 0; i < tab.column_datas.size(); i++)
+        display_tab.column_names.push_back(tab.column_datas[i].field_name);
+    }
+
+    print_table(tab); // CMD line print, QT will do it's own thing in main
+
 }
 
 static void print_table(table tab) {
 
-    for (int i = 0; i < tab.column_datas.size(); i++) {
-        std::string name = tab.column_datas[i].field_name;
-        std::string to_print = name.substr(0, 8);
-        int pad_length = 8 - to_print.length();
+    std::cout << tab.name << ":\n";
+    // for (int i = 0; i < tab.column_datas.size(); i++) {
+    //     std::string name = tab.column_datas[i].field_name;
+    //     std::string to_print = name.substr(0, 8);
+    //     int pad_length = 8 - to_print.length();
+    //     std::string pad(pad_length, ' ');
+    //     std::string out_string = to_print + pad + " | ";
+    //     std::cout << out_string;
+    // }
+
+    std::string field_names = "";
+    std::vector<int> row_indexes;
+    int j = 0;
+    for (int i = 0; i < display_tab.column_names.size(); i++) {
+        while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
+            j++;}
+        row_indexes.push_back(j);
+
+        std::string full_name = tab.column_datas[j].field_name;
+
+        std::string name = full_name.substr(0, 10);
+        int pad_length = 10 - name.length();
         std::string pad(pad_length, ' ');
-        std::string out_string = to_print + pad + " | ";
-        std::cout << out_string;
+        name += pad + " | ";
+
+        field_names += name;
     }
 
-    std::cout << std::endl;
+    std::cout << field_names <<std::endl;
+
+    // for (int i = 0; i < tab.rows.size(); i++) {
+    //     for(int j = 0; j < tab.rows[0].column_values.size(); j++) {
+    //         std::string name = tab.rows[i].column_values[j];
+    //         std::string to_print = name.substr(0, 8);
+    //         int pad_length = 8 - to_print.length();
+    //         std::string pad(pad_length, ' ');
+    //         std::string out_string = to_print + pad + " | ";
+    //         std::cout << out_string;
+    //     }
+    //     std::cout << std::endl;
+    // }
 
     for (int i = 0; i < tab.rows.size(); i++) {
-        for(int j = 0; j < tab.rows[0].column_values.size(); j++) {
-            std::string name = tab.rows[i].column_values[j];
-            std::string to_print = name.substr(0, 8);
-            int pad_length = 8 - to_print.length();
+        std::string row_values = "";
+        for (int j = 0; j < row_indexes.size(); j++) {
+
+            std::string full_name = tab.rows[i].column_values[j];
+
+            std::string name = full_name.substr(0, 10);
+            int pad_length = 10 - name.length();
             std::string pad(pad_length, ' ');
-            std::string out_string = to_print + pad + " | ";
-            std::cout << out_string;
+            name += pad + " | ";
+
+            row_values += name;
         }
-        std::cout << std::endl;
+        std::cout << row_values << std::endl;
     }
 
     std::cout << std::endl;
@@ -143,22 +182,12 @@ static void eval_insert_into(const insert_into* info) {
     if (info->field_names.size() > 0) {
         for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
             if (tab_ptr->column_datas[i].field_name == info->field_names[j]) {
-                object* obj = info->values[j];
-                switch (obj->type()) {
-                case INTEGER_OBJ: {
-                    if (!is_integer_data_type(tab_ptr->column_datas[i].data_type)) {
-                        errors.push_back("eval_insert_into(): Value: (" + obj->data() + ") has mismatching type with column (" + tab_ptr->column_datas[i].data_type->inspect() + ")");
-                        return;}
-                } break;
-                case STRING_OBJ: {
-                    if (!is_string_data_type(tab_ptr->column_datas[i].data_type)) {
-                        errors.push_back("eval_insert_into(): Value: (" + obj->data() + ") has mismatching type with column(" + tab_ptr->column_datas[i].data_type->inspect() + ")");
-                        return;}
-                } break;
-                default:
-                    errors.push_back("eval_insert_into(): Value: (" + obj->data() + "), type: (" + obj->inspect() + ") probably shouldn't be able to insert this");
-                    return;
-                }
+                object* insert_obj = info->values[j];
+                SQL_data_type_object* data_type = tab_ptr->column_datas[i].data_type;
+                insert_obj = can_insert(insert_obj, data_type);
+                if (insert_obj->type() == ERROR_OBJ) {
+                    errors.push_back(insert_obj->data());
+                    return;}
                 roh.column_values.push_back(info->values[j]->data());
                 j++;
                 continue;
@@ -182,8 +211,10 @@ static void eval_insert_into(const insert_into* info) {
     }
 
     if (j < info->values.size()) {
-        eval_push_error_return("eval_insert_into(): werid bug");
-    }
+        eval_push_error_return("eval_insert_into(): werid bug");}
+
+    if (!errors.empty()) {
+        return;}
 
     tab_ptr->rows.push_back(roh);
 }

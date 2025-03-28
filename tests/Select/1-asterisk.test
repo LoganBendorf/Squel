@@ -1,0 +1,9 @@
+CREATE TABLE asterisk_test (
+    hello INT,
+    goodbye INT
+);
+
+INSERT INTO asterisk_test (hello, goodbye)
+VALUES (1, 2);
+
+SELECT * FROM asterisk_test;

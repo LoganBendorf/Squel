@@ -1,0 +1,12 @@
+CREATE TABLE parenthesis_test (
+    hello INT DEFAULT (12+2)*2,
+    goodbye INT
+);
+
+INSERT INTO parenthesis_test (hello)
+VALUES (1+4*2);
+
+INSERT INTO parenthesis_test (goodbye)
+VALUES (2+1*2);
+
+SELECT * FROM parenthesis_test;

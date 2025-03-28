@@ -1,0 +1,12 @@
+CREATE TABLE division_test (
+    hello INT DEFAULT 12/2,
+    goodbye INT
+);
+
+INSERT INTO division_test (hello)
+VALUES (4/4);
+
+INSERT INTO division_test (goodbye)
+VALUES (2/1);
+
+SELECT * FROM division_test;

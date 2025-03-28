@@ -1,0 +1,8 @@
+CREATE TABLE float_test (
+    hello FLOAT
+);
+
+INSERT INTO float_test (hello)
+VALUES (1);
+
+SELECT * FROM float_test;

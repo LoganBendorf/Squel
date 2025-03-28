@@ -6,18 +6,6 @@
 #include <string>
 #include <vector>
 
-enum token_type {
-    CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,
-     COMMA, LINE_END, ILLEGAL, NEW_LINE, QUOTE, DOT, TRUE, FALSE, OPEN_BRACKET, CLOSE_BRACKET,
-      EQUAL, NOT_EQUAL, LESS_THAN, GREATER_THAN, PLUS, MINUS, SLASH, ASTERISK, BANG
-};
-
-typedef struct token {
-    token_type type;
-    std::string data;
-    int line;
-    int position;
-} token;
 
 typedef struct column_data {
     std::string field_name;
@@ -38,6 +26,7 @@ typedef struct table {
 typedef struct display_table {
     bool to_display;
     table tab;
+    std::vector<std::string> column_names;
 } display_table;
 
 struct test {
