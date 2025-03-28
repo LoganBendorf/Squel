@@ -1,0 +1,12 @@
+CREATE TABLE none_should_pass_test (
+    num INT,
+    str VARCHAR(20)
+);
+
+INSERT INTO none_should_pass_test (num, str)
+VALUES (1, bruh);
+
+INSERT INTO none_should_pass_test (num, str)
+VALUES (2, fr);
+
+SELECT * FROM none_should_pass_test WHERE str = hulu;

@@ -11,7 +11,7 @@
 
 
 enum object_type {
-    ERROR_OBJ, INFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, PREFIX_OPERATOR_OBJ, SQL_DATA_TYPE_OBJ
+    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, PREFIX_OPERATOR_OBJ, SQL_DATA_TYPE_OBJ
 };
 
 class object {
@@ -20,6 +20,16 @@ class object {
     virtual object_type type() const = 0;    
     virtual std::string data() const = 0;    
     virtual ~object() = default;            
+};
+
+class null_object : public object {
+    public:
+    std::string inspect() const override {
+        return std::string("NULL_OBJECT");}
+    object_type type() const override {
+        return NULL_OBJ;}
+    std::string data() const override {
+        return std::string("NULL_OBJECT");}
 };
 
 class infix_expression_object : public object {
@@ -47,6 +57,7 @@ class infix_expression_object : public object {
     object* left;
     object* right;
 };
+
 
 class integer_object : public object {
 

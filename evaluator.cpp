@@ -12,7 +12,7 @@ extern display_table display_tab;
 static std::vector<node*> nodes;
 
 static void eval_create_table(const create_table* info);
-static void eval_select_from(const select_from* info);
+static void eval_select_from(select_from* info);
 static void print_table(table tab);
 static void eval_insert_into(const insert_into* info);
 
@@ -63,7 +63,40 @@ static void eval_create_table(const create_table* info) {
     tables.push_back(tab);
 }
 
-static void eval_select_from(const select_from* info) {
+
+static bool eval_condtion(token op, object* left, object* right, std::vector<column_data> columns, row tab_row) {
+
+    // Search for column
+    int column_index = -1;
+    for (int i = 0; i < columns.size(); i++) {
+        if (columns[i].field_name == left->inspect()) {
+            column_index = i;
+            break;
+        }
+    }
+
+    std::string column_value = tab_row.column_values.at(column_index);
+
+
+    switch (op.type) {
+    case EQUAL:
+        if (column_value == right->data()) {
+            return true;
+            break;
+        }
+
+        std::cout << "CONDITION FAIL FOR (" + column_value + ", " + right->data() + ")" << std::endl;
+
+        // errors.push_back("eval_select_from(): Unknown = operation for " + left->inspect() + ", " + right->inspect());
+        return false;
+        break;
+    default:
+        errors.push_back("eval_select_from(): Unknown condition operator, (" + token_type_to_string(op.type) + ")");
+        return false;
+    }
+}
+
+static void eval_select_from(select_from* info) {
 
     table tab;
     bool found = false;
@@ -78,14 +111,54 @@ static void eval_select_from(const select_from* info) {
         errors.push_back("eval_select_from(): Table not found (" + info->table_name + ")");
         return;}
 
+    if (info->asterisk == true) {
+        for (int i = 0; i < tab.column_datas.size(); i++) {
+            info->column_names.push_back(tab.column_datas[i].field_name); }
+    }
+    
+
+
+    std::vector<int> row_ids;
+    if (info->condition->type() != NULL_OBJ) {
+
+        if (info->condition->type() != INFIX_EXPRESSION_OBJ) {
+            errors.push_back("Unsupported condition type, (" + info->condition->inspect() + ")");
+            return;
+        }
+
+        infix_expression_object* condition = static_cast<infix_expression_object*>(info->condition);
+
+
+        token op = condition->op;
+        object* left = condition->left;
+        object* right = condition->right;
+
+        for (int i = 0; i < tab.rows.size(); i++) {
+            int error_count = errors.size();
+
+            bool should_add = eval_condtion(op, left, right, tab.column_datas, tab.rows[i]);
+
+            if (errors.size() > error_count) {
+                return;}
+            
+            if (should_add) {
+                row_ids.push_back(i);
+            }
+        }
+
+    } else {
+        for (int i = 0; i < tab.rows.size(); i++) {
+            row_ids.push_back(i);
+        }
+    }
+
+        
+
 
     display_tab.to_display = true;
     display_tab.tab = tab;
     display_tab.column_names = info->column_names;
-    if (info->asterisk == true) {
-        for (int i = 0; i < tab.column_datas.size(); i++)
-        display_tab.column_names.push_back(tab.column_datas[i].field_name);
-    }
+    display_tab.row_ids = row_ids;
 
     print_table(tab); // CMD line print, QT will do it's own thing in main
 

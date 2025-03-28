@@ -252,6 +252,11 @@ std::vector<token> lexer(std::string input_str) {
                     tokens.push_back(tok);
                     line_position_count += word.size();
                     continue;
+                } else if (word == "WHERE") {
+                    token tok = create_token(WHERE, "WHERE", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
                 } else if (word == "true") {
                     token tok = create_token(TRUE, "true", line_count, line_position_count);
                     tokens.push_back(tok);

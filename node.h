@@ -64,6 +64,11 @@ class select_from : public node {
         asterisk = false;}
     std::string inspect() override {
         std::string str = "select_from: " + table_name + "\n";
+
+        if (condition) {
+            str += "condition: " + condition->inspect() + "\n";
+        }
+        
         for (int i = 0; i < column_names.size() - 1 && column_names.size() > 0; i++) {
             str += column_names[i] + ", ";}
 
@@ -80,6 +85,7 @@ class select_from : public node {
     std::string table_name;
     std::vector<std::string> column_names;
     bool asterisk;
+    object* condition;
 };
 
 class create_table : public node {

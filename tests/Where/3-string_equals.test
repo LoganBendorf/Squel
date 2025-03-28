@@ -1,0 +1,12 @@
+CREATE TABLE string_equals_test (
+    num INT,
+    str VARCHAR(20)
+);
+
+INSERT INTO string_equals_test (num, str)
+VALUES (1, bruh);
+
+INSERT INTO string_equals_test (num, str)
+VALUES (2, fr);
+
+SELECT * FROM string_equals_test WHERE str = bruh;

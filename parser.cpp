@@ -379,36 +379,8 @@ static void parse_select() {
     if (peek_type() != SELECT) {
         std::cout << "parse_select() called with non-select token";
         exit(1);}
+
     advance_and_check("No tokens after SELECT")
-
-    if (peek_type() == ASTERISK) {
-        advance_and_check("No tokens after SELECT *");
-        
-        if (peek_type() == FROM){
-            advance_and_check("No tokens after SELECT * FROM");
-
-            if (peek_type() != STRING_LITERAL) {
-                push_error_return("SELECT bad token type for table name");}
-
-            std::string table_name = peek_data();
-
-            // Advance past string literal
-            advance_and_check("parse_select(): Missing semicolon after table name");
-            // Advance past semicolon
-            if (peek_type() != SEMICOLON) {
-                push_error_return("parse_select(): Missing semicolon after table name");}
-            token_position++;
-
-            select_from* info = new select_from();
-            info->table_name = table_name;
-            info->asterisk = true;
-            nodes.push_back(info);
-            return;
-
-        } else {
-            push_error_return("Unknown SELECT usage");}
-    }
-
 
     int error_start_count = errors.size();
     std::vector<object*> list = parse_comma_seperated_list(FROM);
@@ -420,7 +392,7 @@ static void parse_select() {
 
     for (int i = 0; i < list.size(); i++) {
         if (list[i]->type() != STRING_OBJ) {
-            push_error_return("SELECT, list items must be strings");}
+            push_error_return("SELECT, list items must be strings or *");}
     }
     
     if (peek_type() != FROM) {
@@ -432,17 +404,39 @@ static void parse_select() {
     name_obj = eval_expression(name_obj);
     if (name_obj->type() != STRING_OBJ) {
         push_error_return("Invalid table name");}
-
     
     select_from* info = new select_from();
     info->table_name = name_obj->data();
-    for (int i = 0; i < list.size(); i++) {
-        info->column_names.push_back(list[i]->data());}
-    info->asterisk = false;
+
+    if (list[0]->data() == "*") {
+        if (list.size() > 1) {
+            push_error_return("Too many entries in list after *");}
+        info->asterisk = true;
+    } else {
+        for (int i = 0; i < list.size(); i++) {
+            info->column_names.push_back(list[i]->data());}
+        info->asterisk = false;
+    }   
+
+    if (peek_type() == WHERE) {
+        advance_and_check("No values after SELECT FROM WHERE");
+
+        object* expression = parse_expression(LOWEST);
+        if (expression->type() != INFIX_EXPRESSION_OBJ) {
+            push_error_return("Expected condition in SELECT FROM WHERE, got (" + expression->inspect() + ")");}
+        infix_expression_object* condition_obj = static_cast<infix_expression_object*>(expression);
+        condition_obj->left = eval_expression(condition_obj->left);
+        condition_obj->right = eval_expression(condition_obj->right);
+
+        info->condition = condition_obj;
+    } else {
+        null_object* null_obj = new null_object();
+        info->condition = null_obj;
+    }
     
     // Advance past semicolon
     if (peek_type() != SEMICOLON) {
-        push_error_return("parse_select(): Missing semicolon after table name");}
+        push_error_return("parse_select(): Missing semicolon ending semicolon, instread got " + token_type_to_string(peek_type()));}
         token_position++;
         
     nodes.push_back(info);
@@ -740,7 +734,11 @@ object* prefix_parse_functions_with_token(token tok) {
         advance_and_check_ret_obj("No values after close parenthesis in expression");
         return expression;
     } break;
+    case ASTERISK:
+        advance_and_check_ret_obj("No values after * prefix");
+        return new string_object(tok.data); break;
     default:
+        push_error_return_error_object("No prefix function for (" + token_type_to_string(tok.type) + ")");
         return NULL;
     }
 }
@@ -756,7 +754,10 @@ object* infix_parse_functions_with_obj(object* left) {
         return parse_infix_operator(left); break;
     case DOT:
         return parse_infix_operator(left); break;
+    case EQUAL:
+        return parse_infix_operator(left); break;
     default:
+    push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
         return NULL;
     }
 }

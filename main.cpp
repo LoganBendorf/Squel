@@ -366,11 +366,12 @@ static void display_graphical_table(QGridLayout* table_grid) {
     //         display row
     //     }
     // }
-    for (int i = 0; i < tab.rows.size(); i++) {
+    for (int i = 0; i < display_tab.row_ids.size(); i++) {
+        row tab_row = tab.rows[display_tab.row_ids[i]];
         for (int j = 0; j < row_indexes.size(); j++) {
             int y = i + 2;
             int x = j;
-            table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
+            table_grid->addWidget(new QLabel(QString::fromStdString(tab_row.column_values[j])), y, x);
         }
     }
 

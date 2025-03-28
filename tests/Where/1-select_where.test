@@ -1,0 +1,12 @@
+CREATE TABLE where_test (
+    num INT,
+    str VARCHAR(20)
+);
+
+INSERT INTO where_test (num, str)
+VALUES (1, bruh);
+
+INSERT INTO where_test (num, str)
+VALUES (2, fr);
+
+SELECT * FROM where_test WHERE num = 2;
