@@ -1,0 +1,12 @@
+CREATE TABLE greater_than_test (
+    num INT,
+    str VARCHAR(20)
+);
+
+INSERT INTO greater_than_test (num, str)
+VALUES (1, bruh);
+
+INSERT INTO greater_than_test (num, str)
+VALUES (2, fr);
+
+SELECT * FROM greater_than_test WHERE num > 1;

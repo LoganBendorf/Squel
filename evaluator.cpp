@@ -11,6 +11,7 @@ extern display_table display_tab;
 
 static std::vector<node*> nodes;
 
+static void eval_alter_table(alter_table* info);
 static void eval_create_table(const create_table* info);
 static void eval_select_from(select_from* info);
 static void print_table(table tab);
@@ -39,13 +40,51 @@ void eval() {
         else if (nodes[i]->type() == std::string("create_table")) {
             eval_create_table(static_cast<create_table*>(nodes[i]));
             printf("EVAL CREATE TABLE CALLED\n");
-        }
-        else {
+        } else if  (nodes[i]->type() == std::string("alter_table")) {
+            eval_alter_table(static_cast<alter_table*>(nodes[i]));
+            printf("EVAL ALTER ATBLE CALLED\n");
+        } else {
             errors.push_back("eval: unknown node type (" + nodes[i]->type() + ")");
             return;
         }
     }
 }
+
+static void eval_alter_table(alter_table* info) {
+    table* tab;
+    bool tab_found = false;
+    for (int i = 0; i < tables.size(); i++) {
+        if (tables[i].name == info->table_name) {
+            tab = &tables[i];
+            tab_found = true;
+            break;}
+    }
+    
+    if (!tab_found) {
+        errors.push_back("eval_select_from(): Table not found (" + info->table_name + ")");
+        return;}
+
+    switch (info->table_edit->type()) {
+    case COLUMN_OBJ: {
+
+        column_object* column_obj = static_cast<column_object*>(info->table_edit);
+
+        for (int i = 0; i < tab->column_datas.size(); i++) {
+            if (column_obj->column_name == tab->column_datas[i].field_name) {
+                errors.push_back("eval_alter_table(): Table already contains column with name (" + column_obj->column_name + ")");
+                return;
+            }
+        }
+
+        column_data col = {column_obj->column_name, column_obj->data_type, column_obj->default_value};
+        tab->column_datas.push_back(col);
+    } break;
+    default:
+        errors.push_back("eval_alter_table(): Table edit not supported");
+        return;
+    }
+}
+
 
 static void eval_create_table(const create_table* info) {
 
@@ -77,6 +116,8 @@ static bool eval_condtion(token op, object* left, object* right, std::vector<col
 
     std::string column_value = tab_row.column_values.at(column_index);
 
+    SQL_data_type_object* type = columns.at(column_index).data_type;
+
 
     switch (op.type) {
     case EQUAL:
@@ -88,6 +129,20 @@ static bool eval_condtion(token op, object* left, object* right, std::vector<col
         std::cout << "CONDITION FAIL FOR (" + column_value + ", " + right->data() + ")" << std::endl;
 
         // errors.push_back("eval_select_from(): Unknown = operation for " + left->inspect() + ", " + right->inspect());
+        return false;
+        break;
+    case GREATER_THAN:
+        if (std::stoi(column_value) > std::stoi(right->data())) {
+            return true;
+            break;
+        }
+        return false;
+        break;
+    case LESS_THAN:
+        if (std::stoi(column_value) < std::stoi(right->data())) {
+            return true;
+            break;
+        }
         return false;
         break;
     default:

@@ -11,7 +11,8 @@
 
 
 enum object_type {
-    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, PREFIX_OPERATOR_OBJ, SQL_DATA_TYPE_OBJ
+    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, PREFIX_OPERATOR_OBJ, SQL_DATA_TYPE_OBJ,
+    COLUMN_OBJ
 };
 
 class object {
@@ -96,6 +97,8 @@ class decimal_object : public object {
     double value; // value can be cast to float later
 };
 
+
+
 class string_object : public object {
     public:
     string_object(std::string val) {
@@ -171,10 +174,35 @@ class SQL_data_type_object: public object {
     std::vector<std::string> elements; // for SET
 };
 
+class column_object: public object {
+    public:
+    column_object(std::string name, SQL_data_type_object* type, std::string default_val) {
+        column_name = name;
+        data_type = type;
+        default_value = default_val;
+    }
+    std::string inspect() const override {
+        std::string str = "[Column name: " + column_name + "], ";
+        str += data_type->inspect();
+        str += ", [Default: " + default_value  + "]\n";
+        return str;
+    }
+    object_type type() const override {
+        return COLUMN_OBJ;
+    }
+    std::string data() const override {
+        return column_name + " " + data_type->data() + " " + default_value;
+    }
+    public:
+    std::string column_name;
+    SQL_data_type_object* data_type;
+    std::string default_value;
+};
+
 class error_object : public object {
     public:
     std::string inspect() const override {
-        return value;
+        return "ERROR: " + value;
     }
     object_type type() const override {
         return ERROR_OBJ;

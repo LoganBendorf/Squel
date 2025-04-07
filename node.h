@@ -34,16 +34,22 @@ class insert_into : public node {
         std::stringstream output;
         output << "insert_into: ";
         output << table_name << "\n";
-        output << "[";
-        for (int i = 0; i < field_names.size(); i++) {
-            output << field_names[i] << " ";
+        output << "[Field names: ";
+        for (int i = 0; i < field_names.size() - 1; i++) {
+            output << field_names[i] << ", ";
         }
-        output << "]";
-        output << "\n";
-        for (int i = 0; i < values.size(); i++) {
-            output  << values[i]->inspect() << " ";
+        if (field_names.size() > 0) {
+            output << field_names[field_names.size() - 1];
         }
-        output << "\n";
+
+        output << "], [Values: ";
+        for (int i = 0; i < values.size() - 1; i++) {
+            output  << values[i]->inspect() << ", ";
+        }
+        if (values.size() > 0) {
+            output << values[values.size() - 1]->inspect();
+        }
+        output << "]\n";
         return output.str();
     }
 
@@ -88,14 +94,35 @@ class select_from : public node {
     object* condition;
 };
 
+class alter_table : public node {
+    public:
+    std::string inspect() override {
+        std::stringstream output;
+        output << "alter_table: ";
+        output << table_name << "\n";
+        output << table_edit->inspect();
+        return output.str();
+    }
+    std::string type() override {
+        return std::string("alter_table");
+    }
+    public:
+    std::string table_name;
+    object* table_edit;
+};
+
 class create_table : public node {
     public:
+    
     std::string inspect() override {
         std::stringstream output;
         output << "create_table: ";
         output << table_name << "\n";
         for (int i = 0; i < column_datas.size(); i++) {
-            output << column_datas[i].field_name << " " << column_datas[i].data_type->inspect() << ". [Default: " << column_datas[i].default_value << "] ";
+            output << "[Column name: " << column_datas[i].field_name << "], " << column_datas[i].data_type->inspect() << ", [Default: " << column_datas[i].default_value << "]";
+            if (i != column_datas.size() - 1) {
+                output << ",\n";
+            }
         }
         output << "\n";
         return output.str();

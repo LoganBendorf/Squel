@@ -1,0 +1,8 @@
+CREATE TABLE deez (nutz INT);
+
+ALTER TABLE deez
+ADD COLUMN gottem INT;
+
+INSERT INTO deez (gottem) VALUES (12);
+
+SELECT * FROM deez;

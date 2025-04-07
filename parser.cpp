@@ -6,9 +6,6 @@
 #include "object.h"
 
 
-std::vector<token_type> statement_start_keywords;
-std::vector<std::function<void()>> statement_start_function;
-
 extern std::vector<std::string> errors;
 extern std::vector<table> tables;
 extern display_table display_tab;
@@ -27,6 +24,7 @@ struct numeric {
     std::string value;
 };
 
+static void parse_alter();
 static void parse_insert();
 static void parse_select();
 static void parse_create();
@@ -142,19 +140,6 @@ void parser_init(std::vector<token> toks) {
     loop_count = 0;
     nodes.clear();
 
-    // init function vector
-    statement_start_keywords.push_back(CREATE);
-    statement_start_function.push_back(parse_create);
-
-    // statement_start_keywords.push_back(DATA);
-    // statement_start_function.push_back(parse_data);
-
-    statement_start_keywords.push_back(SELECT);
-    statement_start_function.push_back(parse_select);
-
-    statement_start_keywords.push_back(INSERT);
-    statement_start_function.push_back(parse_insert);
-
 }
 
 
@@ -172,6 +157,8 @@ std::vector<node*> parse() {
         parse_insert(); break;
     case SELECT:
         parse_select(); break;
+    case ALTER:
+        parse_alter(); break;
     default:
         std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = "
         + token_type_to_string(peek().type) + ". Line = " + std::to_string(peek().line) 
@@ -198,10 +185,74 @@ std::vector<node*> parse() {
     return nodes;
 }
 
+static void parse_alter() {
+    if (peek_type() != ALTER) {
+        std::cout << "parse_alter() called with non-ALTER token";
+        exit(1);
+    }
+
+    advance_and_check("No tokens after ALTER");
+
+    if (peek_type() != TABLE) {
+        push_error_return("ALTER, only works on TABLE for now");}
+
+    advance_and_check("No tokens after ALTER TABLE");
+
+    alter_table* info = new alter_table();
+
+    object* expression = parse_expression(LOWEST);
+    expression = eval_expression(expression);
+
+    if (expression->type() != STRING_OBJ) {
+        push_error_return("ALTER TABLE, table name must be string");}
+
+    info->table_name = expression->data();
+
+    if (peek_type() != ADD) {
+        push_error_return("ALTER TABLE, only supports ADD");}
+
+    advance_and_check("No tokens after ADD");
+
+    if (peek_type() != COLUMN) {
+        push_error_return("ALTER TABLE, only supports ADD COLUMN");}
+
+    advance_and_check("No tokens after ADD COLUMN");
+
+    expression = parse_expression(LOWEST);
+    expression = eval_expression(expression);
+
+    if (expression->type() != STRING_OBJ) {
+        push_error_return("ALTER TABLE, column name must be string");}
+
+    object* obj = parse_data_type();
+    if (obj->type() != SQL_DATA_TYPE_OBJ) {
+        push_error_return("Data type error");}
+    
+    SQL_data_type_object* data_type = static_cast<SQL_data_type_object*>(obj);
+
+    column_object* col = new column_object(expression->data(), static_cast<SQL_data_type_object*>(data_type), "");
+
+    if (peek_type() == DEFAULT) {
+        int err_count = errors.size();
+        std::string default_value = parse_default_value(data_type)->data(); // NOTE: string for now
+        if (err_count < errors.size()) {
+            return;}
+        col->default_value = default_value;
+    }
+    if (peek_type() != SEMICOLON) {
+        push_error_return("Missing ending semicolon");}
+    token_position++;
+
+    info->table_edit = col;
+
+
+    nodes.push_back(info);
+}
+
 // inserts rows
 static void parse_insert() {
     if (peek_type() != INSERT) {
-        std::cout << "parse_insert() called with non-insert token";
+        std::cout << "parse_insert() called with non-INSERT token";
         exit(1);}
 
     advance_and_check("No tokens after INSERT");
@@ -220,7 +271,7 @@ static void parse_insert() {
         advance_and_check("No tokens after INSERT INTO table");
 
         if (peek_type() != OPEN_PAREN) {
-            push_error_return("No open parenthesis after INSET INTO table");}
+            push_error_return("No open parenthesis after INSERT INTO table");}
 
         advance_and_check("No tokens after INSERT INTO table (");
 
@@ -312,7 +363,7 @@ static void parse_insert() {
         token_position++;
 
         if (info->field_names.size() != info->values.size()) {
-            push_error_return("INSET INTO, field names and VALUES have non-equal size");}
+            push_error_return("INSERT INTO, field names and VALUES have non-equal size");}
 
     } else {
         push_error_return("Unknown INSERT usage");}
@@ -494,7 +545,7 @@ static void parse_create_table() {
 
         object* data_type = parse_data_type();
         if (data_type->type() != SQL_DATA_TYPE_OBJ) {
-            return;}
+            push_error_return("Data type error");}
 
         col.data_type = static_cast<SQL_data_type_object*>(data_type);
 
@@ -755,6 +806,10 @@ object* infix_parse_functions_with_obj(object* left) {
     case DOT:
         return parse_infix_operator(left); break;
     case EQUAL:
+        return parse_infix_operator(left); break;
+    case GREATER_THAN:
+        return parse_infix_operator(left); break;
+    case LESS_THAN:
         return parse_infix_operator(left); break;
     default:
     push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");

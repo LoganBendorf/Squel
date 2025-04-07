@@ -102,6 +102,18 @@ std::vector<token> lexer(std::string input_str) {
 
     switch (input[input_position]) {
 
+        case '<': {
+            token tok = create_token(LESS_THAN, "<", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
+        case '>': {
+            token tok = create_token(GREATER_THAN, ">", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position++;
+            line_position_count++;
+        } break;
         case '*': {
             token tok = create_token(ASTERISK, "*", line_count, line_position_count);
             tokens.push_back(tok);
@@ -254,6 +266,26 @@ std::vector<token> lexer(std::string input_str) {
                     continue;
                 } else if (word == "WHERE") {
                     token tok = create_token(WHERE, "WHERE", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
+                } else if (word == "ALTER") {
+                    token tok = create_token(ALTER, "ALTER", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
+                } else if (word == "ADD") {
+                    token tok = create_token(ADD, "ADD", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
+                } else if (word == "COLUMN") {
+                    token tok = create_token(COLUMN, "COLUMN", line_count, line_position_count);
+                    tokens.push_back(tok);
+                    line_position_count += word.size();
+                    continue;
+                } else if (word == "DEFAULT") {
+                    token tok = create_token(DEFAULT, "DEFAULT", line_count, line_position_count);
                     tokens.push_back(tok);
                     line_position_count += word.size();
                     continue;
