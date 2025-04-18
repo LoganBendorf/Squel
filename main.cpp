@@ -356,7 +356,7 @@ static void display_graphical_table(QGridLayout* table_grid) {
         while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
             j++;}
         row_indexes.push_back(j);
-        int y = 1; 
+        int y = 1;
         int x = i;  // can overflow
         table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[j].field_name)), y, x);
     }

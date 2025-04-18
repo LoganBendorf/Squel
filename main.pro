@@ -1,3 +1,4 @@
+
 QT += widgets
 TEMPLATE = app
 SOURCES += evaluator.cpp helpers.cpp lexer.cpp main.cpp parser.cpp print.cpp test_reader.cpp
@@ -9,9 +10,14 @@ OBJECTS_DIR = build
 
 
 
+
+
 # Suppress warnings
 CONFIG -= warn_on
 CONFIG += warn_off
+#QMAKE_CXXFLAGS -= Wsign-compare
+#QMAKE_CXXFLAGS += -Wno-sign-compare
+#QMAKE_CXXFLAGS += -Wall
 
 # Debug flags
 CONFIG += debug
@@ -25,7 +31,7 @@ RC_ICONS = icons/squel.ico
 
 # Compile speed
 QMAKE_PARALLEL = 8
-QMAKE_CXX = ccache g++
+QMAKE_CXX = ccache clang++
 
 CONFIG += precompile_header
 PRECOMPILED_HEADER = pch.h
