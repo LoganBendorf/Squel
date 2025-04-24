@@ -1,6 +1,8 @@
 
 
 #include "token.h"
+#include "helpers.h"
+
 #include <vector>
 
 
@@ -43,6 +45,7 @@ static int read_number() {
 static token create_token(token_type type, std::string data, int line, int line_position) {
     return token{type, data, line, line_position};
 }
+
 
 // Needs MORE testing
 static token parse_quoted_string(char type) {
@@ -101,6 +104,26 @@ std::vector<token> lexer(std::string input_str) {
     while (input_position < input.length()) {
 
     switch (input[input_position]) {
+
+        case '$': {
+
+            if (input_position + 1 >= input.length()) {
+                errors.push_back("singular $");
+                std::vector<token> garbage;
+                return garbage;
+            }
+            
+            if (input[input_position + 1] != '$') {
+                errors.push_back("singular $");
+                std::vector<token> garbage;
+                return garbage;
+            }
+
+            token tok = create_token($$, "$$", line_count, line_position_count);
+            tokens.push_back(tok);
+            input_position += 2;
+            line_position_count += 2;
+        } break;
 
         case '<': {
             token tok = create_token(LESS_THAN, "<", line_count, line_position_count);
@@ -229,77 +252,21 @@ std::vector<token> lexer(std::string input_str) {
             if (std::isalpha(input[input_position])) {
                 int start = read_string();
                 std::string word = input.substr(start, input_position - start);
-                if (word == "CREATE") {
-                    token tok = create_token(CREATE, "CREATE", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "TABLE") {
-                    token tok = create_token(TABLE, "TABLE", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "SELECT") {
-                    token tok = create_token(SELECT, "SELECT", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "FROM") {
-                    token tok = create_token(FROM, "FROM", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "INSERT") {
-                    token tok = create_token(INSERT, "INSERT", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "INTO") {
-                    token tok = create_token(INTO, "INTO", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "VALUES") {
-                    token tok = create_token(VALUES, "VALUES", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "WHERE") {
-                    token tok = create_token(WHERE, "WHERE", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "ALTER") {
-                    token tok = create_token(ALTER, "ALTER", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "ADD") {
-                    token tok = create_token(ADD, "ADD", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "COLUMN") {
-                    token tok = create_token(COLUMN, "COLUMN", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "DEFAULT") {
-                    token tok = create_token(DEFAULT, "DEFAULT", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "true") {
-                    token tok = create_token(TRUE, "true", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
-                } else if (word == "false") {
-                    token tok = create_token(FALSE, "false", line_count, line_position_count);
-                    tokens.push_back(tok);
-                    line_position_count += word.size();
-                    continue;
+
+                bool is_keyword = false;
+                for (int i = 0; i < token_type_span().size(); i++) {
+                    if (word == token_type_span()[i]) {
+                        token tok = create_token((token_type) i, word, line_count, line_position_count);
+                        tokens.push_back(tok);
+                        line_position_count += word.size();
+                        is_keyword = true;
+                        break;
+                    }
                 }
+                
+                if (is_keyword) {
+                    continue; }
+
                 token tok = create_token(STRING_LITERAL, "EMPTY_STRING_LITERAL?!?", line_count, line_position_count);
                 tok.data = word;
                 tokens.push_back(tok);

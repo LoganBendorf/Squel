@@ -7,6 +7,7 @@
 class object;
 class SQL_data_type_object;
 
+std::span<const char* const> token_type_span();
 std::string token_type_to_string(token_type index);
 
 bool is_integer_data_type(SQL_data_type_object* data_type);

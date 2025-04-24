@@ -236,8 +236,8 @@ int main (int argc, char* argv[]) {
                     std::vector<node*> nodes = parse();
                     print_nodes(nodes);
             
-                    eval_init(nodes);
-                    eval();
+                    environment* env = eval_init(nodes);
+                    eval(env);
             
                     if (!errors.empty()) {
                         display_errors(commands_results_label);
@@ -287,8 +287,8 @@ int main (int argc, char* argv[]) {
         std::vector<node*> nodes = parse();
         print_nodes(nodes);
         
-        eval_init(nodes);
-        eval();
+        environment* env = eval_init(nodes);
+        eval(env);
 
         if (!errors.empty()) {
             display_errors(commands_results_label);

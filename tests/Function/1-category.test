@@ -1,0 +1,13 @@
+CREATE OR REPLACE FUNCTION category(number DOUBLE)
+  RETURNS VARCHAR
+  AS $$
+  BEGIN
+    IF number < 90 THEN
+      RETURN 'Low';
+    ELSIF number < 110 THEN
+      RETURN 'Medium';
+    ELSE
+      RETURN 'High';
+    END IF;
+  END;
+  $$;

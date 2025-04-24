@@ -2,7 +2,9 @@
 
 
 #include "node.h"
+#include "environment.h"
+
 #include <vector>
 
-void eval_init(std::vector<node*> nodes);
-void eval();
+environment* eval_init(std::vector<node*> nodes);
+void eval(environment* env);

@@ -4,6 +4,7 @@
 #include "node.h"
 #include "helpers.h"
 #include "object.h"
+#include "token.h"
 
 
 extern std::vector<std::string> errors;
@@ -28,13 +29,18 @@ static void parse_alter();
 static void parse_insert();
 static void parse_select();
 static void parse_create();
+static void parse_create_or_replace_function();
 static void parse_create_table();
+
 static bool is_numeric_identifier();
-// static int count_zeroes(std::string integer_lit_data);
+static std::vector<object*> parse_comma_seperated_list(token_type end_val);
+static std::vector<std::pair<object*, token>> parse_function_arguments(token_type end_val);
+
 static object* parse_default_value(SQL_data_type_object* data_type);
 static object* parse_data_type();
 
 
+object* parse_function();
 object* prefix_parse_functions_with_obj(object* obj);
 object* prefix_parse_functions_with_token(token tok);
 object* infix_parse_functions_with_obj(object* obj);
@@ -42,7 +48,7 @@ object* infix_parse_functions_with_token(token tok);
 object* parse_expression(int precedence);
 
 object* eval_expression(object* expression);
-object* eval_infix_expression(token op, object* left, object* right);
+object* eval_infix_expression(operator_object* op, object* left, object* right);
 
 
 static token peek();
@@ -163,8 +169,7 @@ std::vector<node*> parse() {
         std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = "
         + token_type_to_string(peek().type) + ". Line = " + std::to_string(peek().line) 
         + ". Position = " + std::to_string(peek().position);
-        std::cout << error << std::endl;
-        exit(1);
+        errors.push_back(error);
     }
 
     if (!errors.empty()) {
@@ -426,6 +431,88 @@ static std::vector<object*> parse_comma_seperated_list(token_type end_val) {
 }
 
 
+#define advance_and_check_pair_list(x)            \
+    prev_token = tokens[token_position];    \
+    token_position++;                       \
+    if (token_position >= tokens.size()) {  \
+        push_error_return_pair_list(x);}     
+
+#define push_error_return_pair_list(x)                    \
+    token curTok;                           \
+    if (token_position >= tokens.size()) {  \
+        if (tokens.size() > 0 && token_position == tokens.size()) { \
+            curTok = tokens[token_position - 1]; \
+            curTok.position += curTok.data.size(); \
+        } else {                            \
+            curTok.type = LINE_END; curTok.data = ""; curTok.line = -1; curTok.position = -1; \
+        }                                   \
+    } else {                                \
+        curTok = tokens[token_position];}   \
+    std::string error = x;                  \
+    error = error + ". Line = " + std::to_string(curTok.line) + ", position = " + std::to_string(curTok.position);\
+    errors.push_back(error);                \
+    std::vector<std::pair<object*, token>> errored_list; \
+    return errored_list;
+
+
+
+bool is_data_type_token(token tok) {
+    switch (tok.type) {
+    case CHAR: case VARCHAR: case BOOL: case BOOLEAN: case DATE: case YEAR: case SET: case BIT: case INT: case INTEGER: case FLOAT: case DOUBLE: case NONE: case UNSIGNED: case ZEROFILL:
+    case TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB: case DEC: case DECIMAL:
+        return true;
+        break;
+    default:
+        return false;
+    }
+}
+
+
+// Starts on first value, end on end val
+static std::vector<std::pair<object*, token>> parse_function_arguments(token_type end_val) {
+
+    std::vector<std::pair<object*, token>> list;
+
+
+    int loop_count = 0;
+    while (loop_count++ < 100) {
+
+        std::pair<object*, token> pair;
+
+        object* cur = parse_expression(LOWEST);
+        cur = eval_expression(cur);
+        if (cur->type() != STRING_OBJ) {
+            push_error_return_pair_list("Argument name must evaluate to stirng, sad!");}
+
+        pair.first = cur;
+
+        if (!is_data_type_token(peek())) {
+            push_error_return_pair_list("Data type required after name"); }
+
+        token argument_type = peek();
+        pair.second = argument_type;
+
+        advance_and_check_pair_list("parse_function_arguments(): No values after data_type");
+
+
+        list.push_back(pair);
+
+        if (peek_type() == end_val) {
+            break;}
+        
+        if (peek_type() != COMMA) {
+            push_error_return_pair_list("Items in list must be comma seperated");}
+
+        advance_and_check_pair_list("parse_function_arguments(): No values after comma");
+    }
+
+    if (loop_count >= 100) {
+        push_error_return_pair_list("Too many loops during comma seperated function argument traversal, likely weird error");}
+
+    return list;
+}
+
+
 static void parse_select() {
     if (peek_type() != SELECT) {
         std::cout << "parse_select() called with non-select token";
@@ -500,12 +587,74 @@ static void parse_create() {
         exit(1);}
 
     advance_and_check("No tokens after CREATE");
+    
+    switch(peek_type()) {
+    case TABLE: 
+        parse_create_table(); break;
+    case OR:
+        advance_and_check("No tokens after OR");
+        if (peek_type() != REPLACE) {
+            push_error_return("No REPLACE after OR");}
 
-    if (peek_type() == TABLE) {
-        parse_create_table();
-    } else {
-        push_error_return("Unknown keyword (" + peek_data() + ") after CREATE");}
+        advance_and_check("No tokens after REPLACE");
+        if (peek_type() != FUNCTION) {
+            push_error_return("No FUNCTION after REPLACE");}
 
+        parse_create_or_replace_function(); break;
+    default:
+        push_error_return("Unknown keyword (" + peek_data() + ") after CREATE");
+    }
+}
+
+static void parse_create_or_replace_function() {
+    if (peek_type() != FUNCTION) {
+        std::cout << "parse_create_or_replace_function() called with non-FUNCTION token";
+        exit(1);}
+
+    advance_and_check("No tokens after FUNCTION");
+
+    if (peek_type() != STRING_LITERAL) {
+        push_error_return("Function name must be string literal"); }
+
+    std::string function_name = peek().data;
+
+    advance_and_check("No tokens after function name");
+
+    if (peek_type() != OPEN_PAREN) {
+        push_error_return("No parenthesis in function declaration"); }
+
+    advance_and_check("No tokens after parenthesis");
+
+    std::vector<std::pair<object*, token>> list_items = parse_function_arguments(CLOSE_PAREN);
+    
+    advance_and_check("No tokens after list values");
+
+    if (peek_type() != RETURNS) {
+        push_error_return("No RETURNS in function declaration"); }
+
+    advance_and_check("No tokens after RETURNS");
+
+    object* return_type = parse_data_type();
+    if (return_type->type() != SQL_DATA_TYPE_OBJ) {
+        push_error_return("Invalid return type");}
+
+    object* expression = parse_expression(LOWEST);
+
+    if (expression->type() != FUNCTION_OBJ) {
+        push_error_return("error parsing function");}
+
+    function_object* func = static_cast<function_object*>(expression);
+
+    func->return_type = static_cast<SQL_data_type_object*>(return_type);
+
+    func->name = function_name;
+
+    func->arguments = list_items;
+
+    function* info = new function();
+    info->func = func;
+    
+    nodes.push_back(info);
 }
 
 
@@ -629,14 +778,6 @@ static bool is_numeric_identifier() {
     if (token_position >= tokens.size()) {  \
         push_error_return_empty_numeric(x);}
 
-static bool is_infix_operator(token tok) {
-    
-    switch (tok.type) {
-        case MINUS: return true; break;
-        case DOT: return true; break;
-        default: return false;
-    }
-}
 
 
 int numeric_precedence(token tok) {
@@ -647,8 +788,8 @@ int numeric_precedence(token tok) {
         case GREATER_THAN:  return 3; break;
         case PLUS:          return 4; break;
         case MINUS:         return 4; break;
-        case SLASH:         return 5; break;
         case ASTERISK:      return 5; break;
+        case SLASH:         return 5; break;
         case OPEN_PAREN:    return 7; break;
         case OPEN_BRACKET:  return 8; break;
         default:
@@ -656,7 +797,27 @@ int numeric_precedence(token tok) {
     }
 }
 
+int numeric_precedence(operator_object* op) {
+    switch (op->op_type) {
+        case EQUALS_OP:       return 2; break;
+        case NOT_EQUALS_OP:   return 2; break;
+        case LESS_THAN_OP:    return 3; break;
+        case GREATER_THAN_OP: return 3; break;
+        case ADD_OP:          return 4; break;
+        case SUB_OP:          return 4; break;
+        case MUL_OP:        return 5; break;
+        case DIV_OP:          return 5; break;
+        case OPEN_PAREN_OP:      return 7; break;
+        case OPEN_BRACKET_OP:    return 8; break;
+        default:
+            return LOWEST;
+    }
+}
+
 object* parse_prefix_minus() {
+
+    if (peek_type() != MINUS) {
+        push_error_return_error_object("parse_prefix_minus() called without MINUS token"); }
 
 	advance_and_check_ret_obj("No right expression for prefix minus sign");
 
@@ -672,14 +833,210 @@ object* parse_prefix_minus() {
 	return obj;
 }
 
+object* parse_prefix_as() {
+
+    if (peek_type() != AS) {
+        push_error_return_error_object("parse_prefix_as() called without AS token"); }
+
+    advance_and_check_ret_obj("No right expression for prefix AS");
+
+    if (peek_type() == $$) {
+        return parse_function();
+    } else {
+        push_error_return_error_object("AS can only be prefix for $$ in a function (for now)"); }
+}
+
+
+bool is_conditional_object(object* obj) {
+    switch (obj->type()) {
+    case INFIX_EXPRESSION_OBJ:
+        return true;
+    default:
+        return false;
+    }
+}
+
+object* parse_prefix_if() {
+
+    token starter_token = peek();
+
+    if (peek_type() != IF && peek_type() != ELSIF) {
+        push_error_return_error_object("parse_prefix_if() called without IF/ELSIF token"); }
+
+    advance_and_check_ret_obj("No tokens after IF");
+
+    // CONDITION
+    object* condition = parse_expression(LOWEST); // LOWEST or PREFIX??
+    if (condition->type() == ERROR_OBJ) {
+        return condition; }
+
+    if (!is_conditional_object(condition)) {
+        push_error_return_error_object("IF condition evaluated to non-conditional"); }
+
+    if (peek_type() != THEN) {
+        push_error_return_error_object("IF statement missing THEN"); }
+
+    advance_and_check_ret_obj("No tokens after THEN");
+
+    // BODY
+    std::vector<object*> body;
+
+    if (peek_type() == BEGIN) {
+        int max_loops = 0;
+        while (max_loops++ < 100) {
+            object* expression = parse_expression(LOWEST);
+            if (expression->type() == ERROR_OBJ) {
+                return expression; }
+            
+            if (peek_type() == END) {
+                break; }
+        }
+
+        if (max_loops >= 100) {
+            push_error_return_error_object("Too many loops during IF statement parsing"); }
+
+    } else {
+        object* expression = parse_expression(LOWEST);
+        if (expression->type() == ERROR_OBJ) {
+            return expression; }
+
+        body.push_back(expression);
+    }
+
+    if_statement* statement = new if_statement();
+    statement->condition = condition;
+    statement->body = body;
+
+
+    // ELSIF
+    if_statement* prev = statement;
+    
+    int max_loops = 0;
+    while (peek_type() == ELSIF && max_loops++ < 100) { 
+
+        object* statement = parse_expression(LOWEST);
+        if (statement->type() == ERROR_OBJ) {
+            return statement; }
+
+        if (statement->type() != IF_STATEMENT) {
+            push_error_return_error_object("ELSIF statement evaluated to non-IF statement"); }
+
+        prev->other = statement;
+        prev = static_cast<if_statement*>(statement);
+    }
+
+    if (max_loops >= 100) {
+        push_error_return_error_object("Too many loops during ELSIF statement parsing"); }
+
+    // ELSE
+    if (peek_type() == ELSE) {
+        object* statement = parse_expression(LOWEST);
+        if (statement->type() == ERROR_OBJ) {
+            return statement; }
+
+        if (statement->type() != BLOCK_STATEMENT) {
+            push_error_return_error_object("ELSE statement evaluated to non-BLOCK statement"); }
+
+        prev->other = statement;
+    }
+
+    if (starter_token.type == IF) {
+        object* endif = parse_expression(LOWEST);
+        if (endif->type() == ERROR_OBJ) {
+            return endif; }
+        
+        if (endif->type() != END_IF_STATEMENT) {
+            push_error_return_error_object("No END IF in " + token_type_to_string(starter_token.type) + " statement, got (" + endif->inspect() + ")"); }
+    }
+
+    return statement;
+}
+
+object* parse_block_statement() {
+
+    if (peek_type() != ELSE) {
+        push_error_return_error_object("parse_block_statement() called with non-ELSE token"); }
+
+    advance_and_check_ret_obj("No tokens after THEN");
+
+    
+    // BODY
+    std::vector<object*> body;
+
+    if (peek_type() == BEGIN) {
+        int max_loops = 0;
+        while (max_loops++ < 100) {
+            object* expression = parse_expression(LOWEST);
+            if (expression->type() == ERROR_OBJ) {
+                return expression; }
+            
+            if (peek_type() == END) {
+                break; }
+        }
+
+        if (max_loops >= 100) {
+            push_error_return_error_object("Too many loops during IF statement parsing"); }
+
+    } else {
+        object* expression = parse_expression(LOWEST);
+        if (expression->type() == ERROR_OBJ) {
+            return expression; }
+
+        body.push_back(expression);
+    }
+
+    return new block_statement(body);
+}
+
+object* parse_function() {
+    
+    if (peek_type() != $$) {
+        push_error_return_error_object("parse_function() called with non-$$ token"); }
+
+    advance_and_check_ret_obj("No tokens after $$");
+
+    if (peek_type() != BEGIN) {
+        push_error_return_error_object("No BEGIN in function"); }
+
+    advance_and_check_ret_obj("No tokens after BEGIN");
+
+    std::vector<object*> expression_list;
+
+    int max_loops = 0;
+    while (max_loops++ < 100) {
+        object* expression = parse_expression(LOWEST);
+        if (expression->type() == ERROR_OBJ) {
+            return expression; }
+
+        if (expression->type() == END_STATEMENT) {
+            break; } 
+
+        expression_list.push_back(expression);
+    }
+
+    if (max_loops >= 100) {
+        push_error_return_error_object("Too many loops during function parse"); }
+
+    function_object* func = new function_object();
+    func->expressions = expression_list;
+
+    return func;
+}
+
 
 object* parse_infix_operator(object* left) {
 
-    infix_expression_object* expression = new infix_expression_object(peek(), left);
+    object* expr = parse_expression(numeric_precedence(peek())); // Not sure if precedence should be this or LOWEST
+    if (expr->type() == ERROR_OBJ) {
+        return expr; }
 
-    int precedence = numeric_precedence(peek());
+    if (expr->type() != OPERATOR_OBJ) {
+        push_error_return_error_object("Infix object evaluated to non-operator"); }
+    operator_object* op = static_cast<operator_object*>(expr);
 
-    advance_and_check_ret_obj("No tokens after infix operator");
+    infix_expression_object* expression = new infix_expression_object(op, left);
+
+    int precedence = numeric_precedence(op);
     
     object* right = parse_expression(precedence);
     if (right->type() == ERROR_OBJ) {
@@ -714,10 +1071,10 @@ object* eval_expression(object* expression) {
     }
 }
 
-object* eval_infix_expression(token op, object* left, object* right) {
+object* eval_infix_expression(operator_object* op, object* left, object* right) {
 
-    switch (op.type) {
-        case PLUS:
+    switch (op->op_type) {
+        case ADD_OP:
             if (is_numeric_object(left) && is_numeric_object(right)) {
                 return new integer_object(static_cast<integer_object*>(left)->value + static_cast<integer_object*>(right)->value);
             } 
@@ -725,36 +1082,36 @@ object* eval_infix_expression(token op, object* left, object* right) {
                 return new string_object(left->data() + right->data());
             } 
             else {
-                std::string error_str = "No infix " + token_type_to_string(op.type) + " operation for " + left->inspect() + " and " + right->inspect();
+                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
                 push_error_return_error_object(error_str);
             }
             break;
-        case MINUS:
+        case SUB_OP:
             if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + token_type_to_string(op.type) + " operation for " + left->inspect() + " and " + right->inspect();
+                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
                 push_error_return_error_object(error_str);}
             return new integer_object(static_cast<integer_object*>(left)->value - static_cast<integer_object*>(right)->value);
             break;
-        case ASTERISK:
+        case MUL_OP:
             if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + token_type_to_string(op.type) + " operation for " + left->inspect() + " and " + right->inspect();
+                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
                 push_error_return_error_object(error_str);}
             return new integer_object(static_cast<integer_object*>(left)->value * static_cast<integer_object*>(right)->value);
             break;
-        case SLASH:
+        case DIV_OP:
             if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + token_type_to_string(op.type) + " operation for " + left->inspect() + " and " + right->inspect();
+                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
                 push_error_return_error_object(error_str);}
             return new integer_object(static_cast<integer_object*>(left)->value / static_cast<integer_object*>(right)->value);
             break;
-        case DOT:
+        case DOT_OP:
             if (left->type() != INTEGER_OBJ || left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + token_type_to_string(op.type) + " operation for " + left->inspect() + " and " + right->inspect();
+                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
                 push_error_return_error_object(error_str);}
             return new decimal_object(left->data() + "." + right->data());
             break;
         default:
-            push_error_return_error_object("No infix " + token_type_to_string(op.type) + " operator known");
+            push_error_return_error_object("No infix " + op->inspect() + " operator known");
     }
 }
 
@@ -788,6 +1145,43 @@ object* prefix_parse_functions_with_token(token tok) {
     case ASTERISK:
         advance_and_check_ret_obj("No values after * prefix");
         return new string_object(tok.data); break;
+    case AS:
+        return parse_prefix_as(); break;
+    case IF:
+        return parse_prefix_if(); break;
+    case ELSIF:
+        return parse_prefix_if(); break;
+    case LESS_THAN:
+        advance_and_check_ret_obj("No values after less than in expression");
+        if (token_position < tokens.size()) { // NOT CHECKED !!
+            if (peek_type() == EQUAL) {
+                advance_and_check_ret_obj("No values after <= in expression");
+                return new operator_object(LESS_THAN_OR_EQUAL_TO_OP);
+            }
+        }
+        return new operator_object(LESS_THAN_OP);
+    case RETURN: {
+        advance_and_check_ret_obj("No values after RETURN in expression");
+        object* expression = parse_expression(LOWEST);
+        // if (peek_type() == SEMICOLON) {
+        //     advance_and_check_ret_obj("No values after SEMICOLON in return statement"); }
+        return new return_statement(parse_expression(LOWEST));
+    } break;
+    case ELSE:
+        return parse_block_statement(); break;
+    case END:
+        advance_and_check_ret_obj("No values after END in expression");
+        if (peek_type() == IF) {
+            advance_and_check_ret_obj("No values after END IF in expression");
+            if (peek_type() == SEMICOLON) {
+                advance_and_check_ret_obj("No values after SEMICOLON in END IF statement"); }
+            return new end_if_statement(); 
+        }
+
+        if (peek_type() == SEMICOLON) {
+            advance_and_check_ret_obj("No values after SEMICOLON in END statement"); }
+
+        return new end_statement(); break;
     default:
         push_error_return_error_object("No prefix function for (" + token_type_to_string(tok.type) + ")");
         return NULL;
@@ -812,7 +1206,7 @@ object* infix_parse_functions_with_obj(object* left) {
     case LESS_THAN:
         return parse_infix_operator(left); break;
     default:
-    push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
+        push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
         return NULL;
     }
 }
@@ -881,56 +1275,60 @@ static object* parse_data_type() {
     if (token_position >= tokens.size()) {
         push_error_return_error_object("No data type token");}  
     
-    if (peek_data() == "UNSIGNED") {
+    if (peek_type() == UNSIGNED) {
         data_type->prefix == UNSIGNED;
         unsign = true;
         advance_and_check_ret_obj("No data type after UNSIGNED");
-    } else if (peek_data() == "ZEROFILL") {
+    } else if (peek_type() == ZEROFILL) {
         data_type->prefix == ZEROFILL;
         unsign = true;
         zerofill = true;
         advance_and_check_ret_obj("No data type after ZEROFILL");
     }
 
-    if (peek_type() != STRING_LITERAL) {
+    if (peek_type() == STRING_LITERAL) {
         std::string msg = "Data type has bad token type (" + token_type_to_string(peek_type()) + ")\n";
         push_error_return_error_object(msg);}
 
-    std::string type = peek_data();
+    token_type type = peek_type();
     advance_and_check_ret_obj("parse_data_type(): Nothing after data type");
 
     // Basic string
-    if (type == "TINYBLOB") {
+    if (type == TINYBLOB) {
         data_type->data_type = CHAR;
         data_type->parameter_value = 255;
         return data_type;
-    } else if (type == "TINYTEXT") {
+    } else if (type == TINYTEXT) {
         data_type->data_type = CHAR;
         data_type->parameter_value = 255;
         return data_type;
-    } else if (type == "MEDIUMTEXT") {
+    } else if (type == MEDIUMTEXT) {
         data_type->data_type = CHAR;
         data_type->parameter_value = 255;
         return data_type;
-    } else if (type == "MEDIUMBLOB") {
+    } else if (type == MEDIUMBLOB) {
         data_type->data_type = CHAR;
         data_type->parameter_value = 255;
         return data_type;
-    } else if (type == "LONGTEXT") {
+    } else if (type == LONGTEXT) {
         data_type->data_type = CHAR;
         data_type->parameter_value = 255;
         return data_type;
-    } else if (type == "LONGBLOB") {
+    } else if (type == LONGBLOB) {
         data_type->data_type = CHAR;
         data_type->parameter_value = 255;
         return data_type;
     } 
 
-    if (type == "VARCHAR") { 
+    if (type == VARCHAR) { 
         //advance_and_check_ret_str("parse_data_type(): VARCHAR missing length");
 
         if (peek_type() != OPEN_PAREN) {
-            push_error_return_error_object("parse_data_type(): VARCHAR missing open parenthesis");}
+            data_type->data_type = VARCHAR;
+            data_type->parameter_value = 255;
+            return data_type;
+            //push_error_return_error_object("parse_data_type(): VARCHAR missing open parenthesis");
+        }
 
         advance_and_check_ret_obj("parse_data_type(): VARCHAR missing length");
 
@@ -953,25 +1351,25 @@ static object* parse_data_type() {
     }
     
     // Basic numeric
-    if (type == "BOOL") {
+    if (type == BOOL) {
         data_type->data_type = BOOL;
         return data_type;
-    } else if (type == "BOOLEAN") {
+    } else if (type == BOOLEAN) {
         data_type->data_type = BOOL;
         return data_type;
     }
 
     // Basic time
-    if (type == "DATE") {
-        data_type->data_type = DATA;
+    if (type == DATE) {
+        data_type->data_type = DATE;
         return data_type;
-    } else if (type == "YEAR") {
+    } else if (type == YEAR) {
         data_type->data_type = YEAR;
         return data_type;
     }
 
     // String
-    if (type == "SET") {
+    if (type == SET) {
         if (peek_type() == OPEN_PAREN) {
             advance_and_check_ret_obj("parse_data_type(): ");
             if (peek_type() == CLOSE_PAREN) {
@@ -1020,7 +1418,7 @@ static object* parse_data_type() {
     }
 
     // Numeric
-    if (type == "BIT") {
+    if (type == BIT) {
         if (peek_type() == OPEN_PAREN) {
             advance_and_check_ret_obj("parse_data_type(): ");
             if (peek_type() == CLOSE_PAREN) {
@@ -1060,7 +1458,7 @@ static object* parse_data_type() {
             return data_type;
         }
         
-    } else if (type == "INT") {
+    } else if (type == INT || type == INTEGER) {
         // The number is the display size, can ignore in computations for now. I read the default is 11 for signed and 10 for unsigned but I'm not sure it's standard so...
        if (peek_type() == OPEN_PAREN) {
             advance_and_check_ret_obj("parse_data_type(): ");
@@ -1109,13 +1507,13 @@ static object* parse_data_type() {
             }
         }
 
-    } else if (type == "DEC" || type == "DECIMAL") {
+    } else if (type == DEC || type == DECIMAL) {
         push_error_return_error_object_prev_tok("DECIMAL/DEC not supported, too complicated");
-    } else if (type == "FLOAT") {
+    } else if (type == FLOAT) {
         data_type->data_type = FLOAT;
         data_type->parameter_value = 0;
         return data_type;
-    }else if (type == "DOUBLE") {
+    }else if (type == DOUBLE) {
         data_type->data_type = DOUBLE;
         data_type->parameter_value = 0;
         return data_type;

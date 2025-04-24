@@ -4,6 +4,7 @@
 #include "structs_and_macros.h"
 #include "helpers.h"
 #include "object.h"
+#include "environment.h"
 
 extern std::vector<std::string> errors;
 extern std::vector<table> tables;
@@ -11,6 +12,7 @@ extern display_table display_tab;
 
 static std::vector<node*> nodes;
 
+static void eval_function(function* func, environment* env);
 static void eval_alter_table(alter_table* info);
 static void eval_create_table(const create_table* info);
 static void eval_select_from(select_from* info);
@@ -22,32 +24,50 @@ static void eval_insert_into(const insert_into* info);
         errors.push_back(error);                \
         return                                  \
 
-void eval_init(std::vector<node*> nds) {
+environment* eval_init(std::vector<node*> nds) {
     nodes = nds;
+    return new environment();
 }
 
-void eval() {
+void eval(environment* env) {
     
     for (int i = 0; i < nodes.size(); i++) {
-        if (nodes[i]->type() == std::string("insert_into")) {
-            eval_insert_into(static_cast<insert_into*>(nodes[i]));
-            printf("EVAL INSERT INTO CALLED\n");
-        } 
-        else if  (nodes[i]->type() == std::string("select_from")) {
-            eval_select_from(static_cast<select_from*>(nodes[i]));
-            printf("EVAL SELECT FROM CALLED\n");
-        } 
-        else if (nodes[i]->type() == std::string("create_table")) {
-            eval_create_table(static_cast<create_table*>(nodes[i]));
-            printf("EVAL CREATE TABLE CALLED\n");
-        } else if  (nodes[i]->type() == std::string("alter_table")) {
-            eval_alter_table(static_cast<alter_table*>(nodes[i]));
-            printf("EVAL ALTER ATBLE CALLED\n");
-        } else {
-            errors.push_back("eval: unknown node type (" + nodes[i]->type() + ")");
-            return;
+
+        switch(nodes[i]->type()) {
+            case INSERT_INTO_NODE:
+                eval_insert_into(static_cast<insert_into*>(nodes[i]));
+                printf("EVAL INSERT INTO CALLED\n");
+                break;
+            case SELECT_FROM_NODE:
+                eval_select_from(static_cast<select_from*>(nodes[i]));
+                printf("EVAL SELECT FROM CALLED\n");
+                break;
+            case CREATE_TABLE_NODE:
+                eval_create_table(static_cast<create_table*>(nodes[i]));
+                printf("EVAL CREATE TABLE CALLED\n");
+                break;
+            case ALTER_TABLE_NODE:
+                eval_alter_table(static_cast<alter_table*>(nodes[i]));
+                printf("EVAL ALTER TABLE CALLED\n");
+                break;
+            case FUNCTION_NODE:
+                eval_function(static_cast<function*>(nodes[i]), env);
+                printf("EVAL FUNCTION CALLED\n");
+                break;
+            default:
+                eval_push_error_return("eval: unknown node type (" + nodes[i]->inspect() + ")");
+
         }
+
     }
+}
+
+static void eval_function(function* func, environment* env) {
+    env->add_function(func->func);
+
+    std::cout << "!! PRINTING LE FUNCTION !!\n\n";
+
+    std::cout << func->func->inspect() << std::endl;
 }
 
 static void eval_alter_table(alter_table* info) {
@@ -103,7 +123,7 @@ static void eval_create_table(const create_table* info) {
 }
 
 
-static bool eval_condtion(token op, object* left, object* right, std::vector<column_data> columns, row tab_row) {
+static bool eval_condtion(operator_object* op, object* left, object* right, std::vector<column_data> columns, row tab_row) {
 
     // Search for column
     int column_index = -1;
@@ -119,8 +139,8 @@ static bool eval_condtion(token op, object* left, object* right, std::vector<col
     SQL_data_type_object* type = columns.at(column_index).data_type;
 
 
-    switch (op.type) {
-    case EQUAL:
+    switch (op->op_type) {
+    case EQUALS_OP:
         if (column_value == right->data()) {
             return true;
             break;
@@ -131,14 +151,14 @@ static bool eval_condtion(token op, object* left, object* right, std::vector<col
         // errors.push_back("eval_select_from(): Unknown = operation for " + left->inspect() + ", " + right->inspect());
         return false;
         break;
-    case GREATER_THAN:
+    case GREATER_THAN_OP:
         if (std::stoi(column_value) > std::stoi(right->data())) {
             return true;
             break;
         }
         return false;
         break;
-    case LESS_THAN:
+    case LESS_THAN_OP:
         if (std::stoi(column_value) < std::stoi(right->data())) {
             return true;
             break;
@@ -146,7 +166,7 @@ static bool eval_condtion(token op, object* left, object* right, std::vector<col
         return false;
         break;
     default:
-        errors.push_back("eval_select_from(): Unknown condition operator, (" + token_type_to_string(op.type) + ")");
+        errors.push_back("eval_select_from(): Unknown condition operator, (" + op->inspect() + ")");
         return false;
     }
 }
@@ -184,7 +204,7 @@ static void eval_select_from(select_from* info) {
         infix_expression_object* condition = static_cast<infix_expression_object*>(info->condition);
 
 
-        token op = condition->op;
+        operator_object* op = condition->op;
         object* left = condition->left;
         object* right = condition->right;
 
