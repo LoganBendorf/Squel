@@ -1,14 +1,11 @@
-#pragma once
 
-#include "structs_and_macros.h"
+
+#include "node.h"
 #include "helpers.h"
 #include "object.h"
 
-#include "node.h"
-
 #include <string>
 #include <vector>
-#include <iostream>
 #include <sstream>
 
 
@@ -22,7 +19,7 @@ node_type null_node::type() {
 
 // function_node
 std::string function::inspect() {
-    return std::string("function_node"); 
+    return std::string("function_node\n"); 
 }
 node_type function::type() {
     return FUNCTION_NODE; 
@@ -30,24 +27,24 @@ node_type function::type() {
 
 // insert_into_node
 std::string insert_into::inspect()  {
-    std::stringstream output;
-    output << "insert_into: ";
-    output << table_name << "\n";
-    output << "[Field names: ";
-    for (int i = 0; i < field_names.size() - 1; i++) {
-        output << field_names[i] << ", "; }
+    std::string ret_str = "";
+    ret_str += "insert_into: ";
+    ret_str += table_name + "\n";
+    ret_str += "[Fields: ";
+    for (int i = 0; i < fields.size(); i++) {
+        ret_str += fields[i]->inspect() + ", "; }
 
-    if (field_names.size() > 0) {
-        output << field_names[field_names.size() - 1]; }
+    if (fields.size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2); }
 
-    output << "], [Values: ";
+    ret_str += "], [Values: ";
     for (int i = 0; i < values.size() - 1; i++) {
-        output  << values[i]->inspect() << ", "; }
+        ret_str  += values[i]->inspect() + ", "; }
 
     if (values.size() > 0) {
-        output << values[values.size() - 1]->inspect(); }
-    output << "]\n";
-    return output.str();
+        ret_str += values[values.size() - 1]->inspect(); }
+    ret_str += "]\n";
+    return ret_str;
 }
 
 node_type insert_into::type() {
@@ -84,11 +81,11 @@ node_type select_from::type() {
 
 // alter_table_node
 std::string alter_table::inspect() {
-    std::stringstream output;
-    output << "alter_table: ";
-    output << table_name << "\n";
-    output << table_edit->inspect();
-    return output.str();
+    std::string ret_str = "";
+    ret_str += "alter_table: ";
+    ret_str += table_name + "\n";
+    ret_str += table_edit->inspect();
+    return ret_str;
 }
 
 node_type alter_table::type() {
@@ -98,17 +95,17 @@ node_type alter_table::type() {
 
 // create_table_node
 std::string create_table::inspect() {
-    std::stringstream output;
-    output << "create_table: ";
-    output << table_name << "\n";
+    std::string ret_str = "";
+    ret_str += "create_table: ";
+    ret_str += table_name + "\n";
     for (int i = 0; i < column_datas.size(); i++) {
-        output << "[Column name: " << column_datas[i].field_name << "], " << column_datas[i].data_type->inspect() << ", [Default: " << column_datas[i].default_value << "]";
+        ret_str += column_datas[i].field_name + "], " + column_datas[i].data_type->inspect() + ", [Default: " + column_datas[i].default_value + "]";
         if (i != column_datas.size() - 1) {
-            output << ",\n";
+            ret_str += ",\n";
         }
     }
-    output << "\n";
-    return output.str();
+    ret_str += "\n";
+    return ret_str;
 }
 
 node_type create_table::type() {

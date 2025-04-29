@@ -1,19 +1,15 @@
 #pragma once
 
 #include "structs_and_macros.h"
-#include "helpers.h"
 #include "object.h"
 
 #include <string>
 #include <vector>
-#include <iostream>
-#include <sstream>
 
 
 enum node_type {
     NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE,
 };
-
 
 
 class node {
@@ -45,7 +41,7 @@ class insert_into : public node {
 
     public:
     std::string table_name;
-    std::vector<std::string> field_names;
+    std::vector<object*> fields;
     std::vector<object*> values;
 };
 

@@ -1,8 +1,10 @@
 
 #include "print.h"
 
-#include <iostream>
+#include "helpers.h"
+
 #include <iomanip>
+#include <iostream>
 
 
 void print_column(table tab, int column_index) {

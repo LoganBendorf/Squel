@@ -15,7 +15,7 @@ if(CCACHE_PROGRAM)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt5 REQUIRED COMPONENTS Widgets)
 
 # Use lld as the linker
 set(CMAKE_LINKER "lld")
@@ -33,7 +33,7 @@ add_library(MyQtLib STATIC
   helpers.cpp 
   test_reader.cpp
 )
-target_link_libraries(MyQtLib PUBLIC Qt6::Widgets)
+target_link_libraries(MyQtLib PUBLIC Qt5::Widgets)
 
 # Apply precompiled headers
 target_precompile_headers(MyQtLib PRIVATE   
@@ -43,7 +43,7 @@ target_precompile_headers(MyQtLib PRIVATE
 
 # Main executable (only contains main.cpp)
 add_executable(MyQtApp main.cpp)
-target_link_libraries(MyQtApp PRIVATE MyQtLib Qt6::Widgets)
+target_link_libraries(MyQtApp PRIVATE MyQtLib Qt5::Widgets)
 
 # Enable compiler optimizations and LTO
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto")

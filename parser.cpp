@@ -1,10 +1,13 @@
 #include "pch.h"
 
 #include "parser.h"
+
 #include "node.h"
 #include "helpers.h"
 #include "object.h"
 #include "token.h"
+#include "structs_and_macros.h"
+#include "environment.h"
 
 
 extern std::vector<std::string> errors;
@@ -20,6 +23,8 @@ static token prev_token = {ERROR, std::string("garbage"), 0, 0};
 
 static int loop_count = 0;
 
+static std::vector<std::string> function_names;
+
 struct numeric {
     bool is_decimal;
     std::string value;
@@ -32,23 +37,16 @@ static void parse_create();
 static void parse_create_or_replace_function();
 static void parse_create_table();
 
-static bool is_numeric_identifier();
+// static bool is_numeric_identifier();
 static std::vector<object*> parse_comma_seperated_list(token_type end_val);
-static std::vector<std::pair<object*, token>> parse_function_arguments(token_type end_val);
 
 static object* parse_default_value(SQL_data_type_object* data_type);
-static object* parse_data_type();
 
 
-object* parse_function();
-object* prefix_parse_functions_with_obj(object* obj);
-object* prefix_parse_functions_with_token(token tok);
-object* infix_parse_functions_with_obj(object* obj);
-object* infix_parse_functions_with_token(token tok);
-object* parse_expression(int precedence);
-
-object* eval_expression(object* expression);
-object* eval_infix_expression(operator_object* op, object* left, object* right);
+static object* parse_function();
+static object* prefix_parse_functions_with_token(token tok);
+static object* infix_parse_functions_with_obj(object* obj);
+static object* parse_expression(int precedence);
 
 
 static token peek();
@@ -140,10 +138,20 @@ enum precedences {
     if (token_position >= tokens.size()) {  \
         push_error_return_error_object(x);} 
 
+bool is_function_name(std::string name) {
+    for (const auto& func_name : function_names) {
+        if (func_name == name) {
+            return true; }
+    }
+    return false;
+}
+
 void parser_init(std::vector<token> toks) {
     tokens = toks;
     token_position = 0;
+    prev_token = {ERROR, std::string("garbage"), 0, 0};
     loop_count = 0;
+    function_names = {};
     nodes.clear();
 
 }
@@ -206,10 +214,6 @@ static void parse_alter() {
     alter_table* info = new alter_table();
 
     object* expression = parse_expression(LOWEST);
-    expression = eval_expression(expression);
-
-    if (expression->type() != STRING_OBJ) {
-        push_error_return("ALTER TABLE, table name must be string");}
 
     info->table_name = expression->data();
 
@@ -224,32 +228,24 @@ static void parse_alter() {
     advance_and_check("No tokens after ADD COLUMN");
 
     expression = parse_expression(LOWEST);
-    expression = eval_expression(expression);
+    if (expression->type() == ERROR_OBJ) {
+        return; }
 
-    if (expression->type() != STRING_OBJ) {
-        push_error_return("ALTER TABLE, column name must be string");}
-
-    object* obj = parse_data_type();
-    if (obj->type() != SQL_DATA_TYPE_OBJ) {
-        push_error_return("Data type error");}
-    
-    SQL_data_type_object* data_type = static_cast<SQL_data_type_object*>(obj);
-
-    column_object* col = new column_object(expression->data(), static_cast<SQL_data_type_object*>(data_type), "");
+    column_object* col = new column_object(expression->data(), expression);
 
     if (peek_type() == DEFAULT) {
-        int err_count = errors.size();
-        std::string default_value = parse_default_value(data_type)->data(); // NOTE: string for now
-        if (err_count < errors.size()) {
-            return;}
+        object* default_value = parse_expression(LOWEST);
+        if (default_value->type() == ERROR_OBJ) {
+            return; }
         col->default_value = default_value;
     }
+
     if (peek_type() != SEMICOLON) {
         push_error_return("Missing ending semicolon");}
+
     token_position++;
 
     info->table_edit = col;
-
 
     nodes.push_back(info);
 }
@@ -281,34 +277,14 @@ static void parse_insert() {
         advance_and_check("No tokens after INSERT INTO table (");
 
         // Find field names
-        int count = 1;
+        
+        int error_count = errors.size();
+        std::vector<object*> fields = parse_comma_seperated_list(CLOSE_PAREN);
+        if (error_count < errors.size()) {
+            push_error_return("INSERT INTO: Failed to get field names"); }
 
-        while (peek_type() != CLOSE_PAREN && peek_type() != LINE_END) {
+        info->fields = fields;
             
-            if (peek_type() != STRING_LITERAL) {
-                if (count > 1) {
-                    push_error_return("parse_insert(): Comma must serpate field names");
-                } else {
-                    push_error_return("Field names must be strings");
-                }
-            }
-            
-            info->field_names.push_back(peek_data());
-            
-            advance_and_check("Field names missing closing parenthesis");
-            
-            if (peek_type() != COMMA) {
-                break;}
-            
-            advance_and_check("Missing field name after comma");
-
-            if (count++ == 32) {
-                push_error_return("Tables cannot have more than 32 columns >:(");}
-        }
-
-        if (!errors.empty()) {
-            return;}
-
         if (peek_type() != CLOSE_PAREN) {
             push_error_return("Field names missing closing parenthesis");}
 
@@ -325,41 +301,18 @@ static void parse_insert() {
         advance_and_check("INSERT INTO table, missing values after open parenthesis");
 
         // Find values
-        count = 1;
-        while (count++ < 32) {
+        error_count = errors.size();
+        std::vector<object*> values = parse_comma_seperated_list(CLOSE_PAREN);
+        if (error_count < errors.size()) {
+            push_error_return("INSERT INTO: Failed to get values"); }
+
+        info->values = values;
         
-            if (peek_type() != STRING_LITERAL && !is_numeric_identifier()) {
-                if (count > 1) {
-                    push_error_return("parse_insert(): Comma must serpate VALUES's values");
-                } else {
-                    push_error_return("VALUES must be string or numeric, token was " + token_type_to_string(peek_type()));}
-                }
-            
-            object* expression = parse_expression(LOWEST);
-            expression = eval_expression(expression);
-            info->values.push_back(expression);
-            
-            // advance_and_check("VALUES missing closing parenthesis");
-
-            if (peek_type() == CLOSE_PAREN) {
-                break;}
-
-            if (peek_type() != COMMA) {
-                push_error_return("VALUES must be seperated by a comma");}
-
-            advance_and_check("Missing values after comma in VALUES");
-
-        }
-
-        
-        if (count >= 32) {
+        if (values.size() >= 32) {
             push_error_return("VALUES, tables cannot have more than 32 columns >:(");}
             
         if (peek_type() != CLOSE_PAREN) {
             push_error_return("VALUES, missing closing parenthesis");}
-
-        if (!errors.empty()) {
-            return;}
 
         advance_and_check("VALUES missing closing semicolon");
 
@@ -367,7 +320,7 @@ static void parse_insert() {
             push_error_return("VALUES missing closing semicolon");}
         token_position++;
 
-        if (info->field_names.size() != info->values.size()) {
+        if (info->fields.size() != info->values.size()) {
             push_error_return("INSERT INTO, field names and VALUES have non-equal size");}
 
     } else {
@@ -400,18 +353,15 @@ static void parse_insert() {
     return errored_list;
 
 
+
 // Starts on first value, end on end val
 static std::vector<object*> parse_comma_seperated_list(token_type end_val) {
 
     std::vector<object*> list;
 
-
     int loop_count = 0;
     while (loop_count++ < 100) {
         object* cur = parse_expression(LOWEST);
-        cur = eval_expression(cur);
-        if (!is_listable(cur)) {
-            push_error_return_list("Object is not listable, sad!");}
 
         list.push_back(cur);
         
@@ -419,7 +369,7 @@ static std::vector<object*> parse_comma_seperated_list(token_type end_val) {
             break;}
         
         if (peek_type() != COMMA) {
-            push_error_return_list("Items in list must be comma seperated");}
+            push_error_return_list("Items in list must be comma seperated, got " + token_type_to_string(peek_type()) + ")");}
 
         advance_and_check_list("parse_comma_seperated_list(): No values after comma");
     }
@@ -468,51 +418,6 @@ bool is_data_type_token(token tok) {
 }
 
 
-// Starts on first value, end on end val
-static std::vector<std::pair<object*, token>> parse_function_arguments(token_type end_val) {
-
-    std::vector<std::pair<object*, token>> list;
-
-
-    int loop_count = 0;
-    while (loop_count++ < 100) {
-
-        std::pair<object*, token> pair;
-
-        object* cur = parse_expression(LOWEST);
-        cur = eval_expression(cur);
-        if (cur->type() != STRING_OBJ) {
-            push_error_return_pair_list("Argument name must evaluate to stirng, sad!");}
-
-        pair.first = cur;
-
-        if (!is_data_type_token(peek())) {
-            push_error_return_pair_list("Data type required after name"); }
-
-        token argument_type = peek();
-        pair.second = argument_type;
-
-        advance_and_check_pair_list("parse_function_arguments(): No values after data_type");
-
-
-        list.push_back(pair);
-
-        if (peek_type() == end_val) {
-            break;}
-        
-        if (peek_type() != COMMA) {
-            push_error_return_pair_list("Items in list must be comma seperated");}
-
-        advance_and_check_pair_list("parse_function_arguments(): No values after comma");
-    }
-
-    if (loop_count >= 100) {
-        push_error_return_pair_list("Too many loops during comma seperated function argument traversal, likely weird error");}
-
-    return list;
-}
-
-
 static void parse_select() {
     if (peek_type() != SELECT) {
         std::cout << "parse_select() called with non-select token";
@@ -539,10 +444,7 @@ static void parse_select() {
     advance_and_check("No values after FROM");
 
     object* name_obj = parse_expression(LOWEST);
-    name_obj = eval_expression(name_obj);
-    if (name_obj->type() != STRING_OBJ) {
-        push_error_return("Invalid table name");}
-    
+
     select_from* info = new select_from();
     info->table_name = name_obj->data();
 
@@ -563,8 +465,6 @@ static void parse_select() {
         if (expression->type() != INFIX_EXPRESSION_OBJ) {
             push_error_return("Expected condition in SELECT FROM WHERE, got (" + expression->inspect() + ")");}
         infix_expression_object* condition_obj = static_cast<infix_expression_object*>(expression);
-        condition_obj->left = eval_expression(condition_obj->left);
-        condition_obj->right = eval_expression(condition_obj->right);
 
         info->condition = condition_obj;
     } else {
@@ -625,34 +525,36 @@ static void parse_create_or_replace_function() {
 
     advance_and_check("No tokens after parenthesis");
 
-    std::vector<std::pair<object*, token>> list_items = parse_function_arguments(CLOSE_PAREN);
+    std::vector<object*> parameters = parse_comma_seperated_list(CLOSE_PAREN);
     
-    advance_and_check("No tokens after list values");
+    advance_and_check("No tokens after parameters");
 
     if (peek_type() != RETURNS) {
         push_error_return("No RETURNS in function declaration"); }
 
     advance_and_check("No tokens after RETURNS");
 
-    object* return_type = parse_data_type();
+    object* return_type = parse_expression(LOWEST);
     if (return_type->type() != SQL_DATA_TYPE_OBJ) {
         push_error_return("Invalid return type");}
 
-    object* expression = parse_expression(LOWEST);
+    object* func_body = parse_expression(LOWEST);
 
-    if (expression->type() != FUNCTION_OBJ) {
+    if (func_body->type() != FUNCTION_OBJ) {
         push_error_return("error parsing function");}
 
-    function_object* func = static_cast<function_object*>(expression);
+    function_object* func = static_cast<function_object*>(func_body);
 
     func->return_type = static_cast<SQL_data_type_object*>(return_type);
 
     func->name = function_name;
 
-    func->arguments = list_items;
+    func->parameters = parameters;
 
     function* info = new function();
     info->func = func;
+
+    function_names.push_back(function_name);
     
     nodes.push_back(info);
 }
@@ -692,7 +594,7 @@ static void parse_create_table() {
 
         advance_and_check("No data type after CREATE TABLE field name");
 
-        object* data_type = parse_data_type();
+        object* data_type = parse_expression(LOWEST);
         if (data_type->type() != SQL_DATA_TYPE_OBJ) {
             push_error_return("Data type error");}
 
@@ -746,15 +648,15 @@ static void parse_create_table() {
     // std::cout << "AFTER TABLE CREATED, TOKEN KEYWORD == " << token_type_to_string(peek_type()) << std::endl;
 }
 
-static bool is_numeric_identifier() {
-    if (peek_type() == INTEGER_LITERAL ||
-        peek_type() == DOT ||
-        peek_type() == MINUS
-    ) {
-        return true;
-    }
-    return false;
-}
+// static bool is_numeric_identifier() {
+//     if (peek_type() == INTEGER_LITERAL ||
+//         peek_type() == DOT ||
+//         peek_type() == MINUS
+//     ) {
+//         return true;
+//     }
+//     return false;
+// }
 
 #define push_error_return_empty_numeric(x)  \
     token curTok;                           \
@@ -847,15 +749,6 @@ object* parse_prefix_as() {
 }
 
 
-bool is_conditional_object(object* obj) {
-    switch (obj->type()) {
-    case INFIX_EXPRESSION_OBJ:
-        return true;
-    default:
-        return false;
-    }
-}
-
 object* parse_prefix_if() {
 
     token starter_token = peek();
@@ -869,9 +762,6 @@ object* parse_prefix_if() {
     object* condition = parse_expression(LOWEST); // LOWEST or PREFIX??
     if (condition->type() == ERROR_OBJ) {
         return condition; }
-
-    if (!is_conditional_object(condition)) {
-        push_error_return_error_object("IF condition evaluated to non-conditional"); }
 
     if (peek_type() != THEN) {
         push_error_return_error_object("IF statement missing THEN"); }
@@ -905,7 +795,7 @@ object* parse_prefix_if() {
 
     if_statement* statement = new if_statement();
     statement->condition = condition;
-    statement->body = body;
+    statement->body = new block_statement(body);
 
 
     // ELSIF
@@ -944,9 +834,10 @@ object* parse_prefix_if() {
         object* endif = parse_expression(LOWEST);
         if (endif->type() == ERROR_OBJ) {
             return endif; }
-        
+            
         if (endif->type() != END_IF_STATEMENT) {
             push_error_return_error_object("No END IF in " + token_type_to_string(starter_token.type) + " statement, got (" + endif->inspect() + ")"); }
+        
     }
 
     return statement;
@@ -1009,6 +900,9 @@ object* parse_function() {
             return expression; }
 
         if (expression->type() == END_STATEMENT) {
+            advance_and_check_ret_obj("No values after END");
+            if (peek_type() != SEMICOLON) {
+                push_error_return_error_object("No semicolon after END"); }
             break; } 
 
         expression_list.push_back(expression);
@@ -1019,6 +913,14 @@ object* parse_function() {
 
     function_object* func = new function_object();
     func->expressions = expression_list;
+
+    if (peek_type() == $$) {
+        advance_and_check_ret_obj("No value after closing $$"); }
+
+    if (peek_type() != SEMICOLON) {
+        push_error_return_error_object("Function declaration missing closing semicolon"); }
+
+    token_position++;
 
     return func;
 }
@@ -1048,297 +950,65 @@ object* parse_infix_operator(object* left) {
 
 }
 
-object* eval_expression(object* expression) {
 
-    switch(expression->type()) {
-        case INTEGER_OBJ:
-            return expression; break;
-        case STRING_OBJ:
-            return expression; break;
-        case INFIX_EXPRESSION_OBJ: {
-             infix_expression_object* infix_expr = static_cast<infix_expression_object*>(expression);
-            object* left = eval_expression(infix_expr->left);
-            if (left->type() == ERROR_OBJ) {
-                return left;}
-            object* right = eval_expression(infix_expr->right);
-            if (right->type() == ERROR_OBJ) {
-                return right;}
-            return eval_infix_expression(infix_expr->op, left, right);
-        } break;
-
-        default:
-            push_error_return_error_object("Cannot evaluate expression of type " + expression->inspect());
-    }
-}
-
-object* eval_infix_expression(operator_object* op, object* left, object* right) {
-
-    switch (op->op_type) {
-        case ADD_OP:
-            if (is_numeric_object(left) && is_numeric_object(right)) {
-                return new integer_object(static_cast<integer_object*>(left)->value + static_cast<integer_object*>(right)->value);
-            } 
-            else if (is_string_object(left) && is_string_object(right)) {
-                return new string_object(left->data() + right->data());
-            } 
-            else {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);
-            }
-            break;
-        case SUB_OP:
-            if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new integer_object(static_cast<integer_object*>(left)->value - static_cast<integer_object*>(right)->value);
-            break;
-        case MUL_OP:
-            if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new integer_object(static_cast<integer_object*>(left)->value * static_cast<integer_object*>(right)->value);
-            break;
-        case DIV_OP:
-            if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new integer_object(static_cast<integer_object*>(left)->value / static_cast<integer_object*>(right)->value);
-            break;
-        case DOT_OP:
-            if (left->type() != INTEGER_OBJ || left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new decimal_object(left->data() + "." + right->data());
-            break;
-        default:
-            push_error_return_error_object("No infix " + op->inspect() + " operator known");
-    }
-}
-
-
-// token type will index into keywords, which then indexes into parse_prefix_functions returning the appropriate function
-std::vector<token_type> prefix_parse_functions_keywords;
-object* prefix_parse_functions_with_obj(object* obj) {
-    switch (obj->type()) {
-    default:
-        return NULL;
-    }
-}
-object* prefix_parse_functions_with_token(token tok) {
-    switch (tok.type) {
-    case MINUS:
-        return parse_prefix_minus(); break;
-    case INTEGER_LITERAL:
-        advance_and_check_ret_obj("No values after integer prefix");
-        return new integer_object(tok.data); break;
-    case STRING_LITERAL:
-        advance_and_check_ret_obj("No values after string prefix");
-        return new string_object(tok.data); break;
-    case OPEN_PAREN:{
-        advance_and_check_ret_obj("No values after open parenthesis in expression");
-        object* expression =  parse_expression(LOWEST);
-        if (peek_type() != CLOSE_PAREN) {
-            push_error_return_error_object("Expected closing parenthesis");}
-        advance_and_check_ret_obj("No values after close parenthesis in expression");
-        return expression;
-    } break;
-    case ASTERISK:
-        advance_and_check_ret_obj("No values after * prefix");
-        return new string_object(tok.data); break;
-    case AS:
-        return parse_prefix_as(); break;
-    case IF:
-        return parse_prefix_if(); break;
-    case ELSIF:
-        return parse_prefix_if(); break;
-    case LESS_THAN:
-        advance_and_check_ret_obj("No values after less than in expression");
-        if (token_position < tokens.size()) { // NOT CHECKED !!
-            if (peek_type() == EQUAL) {
-                advance_and_check_ret_obj("No values after <= in expression");
-                return new operator_object(LESS_THAN_OR_EQUAL_TO_OP);
-            }
-        }
-        return new operator_object(LESS_THAN_OP);
-    case RETURN: {
-        advance_and_check_ret_obj("No values after RETURN in expression");
-        object* expression = parse_expression(LOWEST);
-        // if (peek_type() == SEMICOLON) {
-        //     advance_and_check_ret_obj("No values after SEMICOLON in return statement"); }
-        return new return_statement(parse_expression(LOWEST));
-    } break;
-    case ELSE:
-        return parse_block_statement(); break;
-    case END:
-        advance_and_check_ret_obj("No values after END in expression");
-        if (peek_type() == IF) {
-            advance_and_check_ret_obj("No values after END IF in expression");
-            if (peek_type() == SEMICOLON) {
-                advance_and_check_ret_obj("No values after SEMICOLON in END IF statement"); }
-            return new end_if_statement(); 
-        }
-
-        if (peek_type() == SEMICOLON) {
-            advance_and_check_ret_obj("No values after SEMICOLON in END statement"); }
-
-        return new end_statement(); break;
-    default:
-        push_error_return_error_object("No prefix function for (" + token_type_to_string(tok.type) + ")");
-        return NULL;
-    }
-}
-object* infix_parse_functions_with_obj(object* left) {
-    switch (peek_type()) {
-    case PLUS:
-        return parse_infix_operator(left); break;
-    case MINUS:
-        return parse_infix_operator(left); break;
-    case ASTERISK:
-        return parse_infix_operator(left); break;
-    case SLASH:
-        return parse_infix_operator(left); break;
-    case DOT:
-        return parse_infix_operator(left); break;
-    case EQUAL:
-        return parse_infix_operator(left); break;
-    case GREATER_THAN:
-        return parse_infix_operator(left); break;
-    case LESS_THAN:
-        return parse_infix_operator(left); break;
-    default:
-        push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
-        return NULL;
-    }
-}
-
-
-
-object* parse_expression(int precedence) {
-    
-    // std::cout << "parse_expression called with " << token_type_to_string(peek_type()) << std::endl;
-
-    object* left = prefix_parse_functions_with_token(peek());
-    if (!left || left->type() == ERROR_OBJ) {
-        return new error_object();}
-
-    while (peek_type() != LINE_END &&
-           peek_type() != CLOSE_PAREN &&
-           peek_type() != SEMICOLON &&
-           peek_type() != COMMA && 
-           precedence < numeric_precedence(peek()) ) {
-            left = infix_parse_functions_with_obj(left);
-            if (!left || left->type() == ERROR_OBJ) {
-                return new error_object();}
-
-            // advance_and_check_ret_obj("parse_expression(); infix missing right");
-
-            // left = infix_parse_functions_with_obj(left);
-            
-           }     
-        
-    return left;
-}
-        
-  
-static object* parse_default_value(SQL_data_type_object* data_type) {
-
-    if (peek_data() != "DEFAULT") {
-        push_error_return_error_object("parse_default_value(): called with non-DEFAULT value token");
-    }
-
-    advance_and_check_ret_obj("No value after DEFAULT");
-
-    object* obj = parse_expression(LOWEST);
-    obj = eval_expression(obj);
-    std::cout << "default value parsed expression = " << obj->inspect() << std::endl;
-
-    // advance_and_check_ret_obj("Nothing after DEFAULT x");
-    
-    object* insert_obj = can_insert(obj, data_type);
-    if (insert_obj->type() == ERROR_OBJ) {
-        errors.push_back("Default value error, " + insert_obj->data());
-        return insert_obj;}
-
-    return insert_obj;
-}
-
-// likely want to do some expression parsing in here for if someone does something like VARCHAR(2 * 10)
-// advances after type
-static object* parse_data_type() {
+static object* parse_data_type(token tok) {
 
     SQL_data_type_object* data_type = new SQL_data_type_object();
     data_type->prefix = NONE;
 
     bool unsign = false;
     bool zerofill = false;
+    zerofill = zerofill; // compiler is annoying
 
     if (token_position >= tokens.size()) {
         push_error_return_error_object("No data type token");}  
     
-    if (peek_type() == UNSIGNED) {
-        data_type->prefix == UNSIGNED;
+    if (tok.type == UNSIGNED) {
+        data_type->prefix = UNSIGNED;
         unsign = true;
         advance_and_check_ret_obj("No data type after UNSIGNED");
-    } else if (peek_type() == ZEROFILL) {
-        data_type->prefix == ZEROFILL;
+        tok = peek();
+    } else if (tok.type == ZEROFILL) {
+        data_type->prefix = ZEROFILL;
         unsign = true;
         zerofill = true;
         advance_and_check_ret_obj("No data type after ZEROFILL");
+        tok = peek();
     }
 
-    if (peek_type() == STRING_LITERAL) {
+    if (tok.type == STRING_LITERAL) {
         std::string msg = "Data type has bad token type (" + token_type_to_string(peek_type()) + ")\n";
         push_error_return_error_object(msg);}
 
-    token_type type = peek_type();
+    token_type type = tok.type;
     advance_and_check_ret_obj("parse_data_type(): Nothing after data type");
 
     // Basic string
-    if (type == TINYBLOB) {
+    switch(type) {
+    case TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB:
         data_type->data_type = CHAR;
-        data_type->parameter_value = 255;
-        return data_type;
-    } else if (type == TINYTEXT) {
-        data_type->data_type = CHAR;
-        data_type->parameter_value = 255;
-        return data_type;
-    } else if (type == MEDIUMTEXT) {
-        data_type->data_type = CHAR;
-        data_type->parameter_value = 255;
-        return data_type;
-    } else if (type == MEDIUMBLOB) {
-        data_type->data_type = CHAR;
-        data_type->parameter_value = 255;
-        return data_type;
-    } else if (type == LONGTEXT) {
-        data_type->data_type = CHAR;
-        data_type->parameter_value = 255;
-        return data_type;
-    } else if (type == LONGBLOB) {
-        data_type->data_type = CHAR;
-        data_type->parameter_value = 255;
-        return data_type;
-    } 
+        data_type->parameter = new integer_object(255);
+        return data_type; break;
+    default:
+        break;
+    }
 
     if (type == VARCHAR) { 
         //advance_and_check_ret_str("parse_data_type(): VARCHAR missing length");
 
         if (peek_type() != OPEN_PAREN) {
             data_type->data_type = VARCHAR;
-            data_type->parameter_value = 255;
+            data_type->parameter = new integer_object(255);
             return data_type;
             //push_error_return_error_object("parse_data_type(): VARCHAR missing open parenthesis");
         }
 
         advance_and_check_ret_obj("parse_data_type(): VARCHAR missing length");
 
+
         object* obj = parse_expression(LOWEST);
-        if (obj->type() != INTEGER_OBJ) {
-            push_error_return_error_object("parse_data_type(): VARCHAR parameter contain non-integer");}
-        if (static_cast<integer_object*>(obj)->value <= 0) {
-            push_error_return_error_object("parse_data_type(): VARCHAR parameter must be greater than 0");}
-        
-        // advance_and_check_ret_obj("parse_data_type(): VARCHAR nothing after length");
+        if (obj->type() == ERROR_OBJ) {
+            return obj; }
 
         if (peek_type() != CLOSE_PAREN) {
             push_error_return_error_object("parse_data_type(): VARCHAR missing closing parenthesis");}
@@ -1346,7 +1016,7 @@ static object* parse_data_type() {
         advance_and_check_ret_obj("parse_data_type(): VARCHAR nothing after closing parenthesis");
 
         data_type->data_type = VARCHAR;
-        data_type->parameter_value = std::stoi(obj->data());
+        data_type->parameter = obj;
         return data_type;
     }
     
@@ -1378,38 +1048,21 @@ static object* parse_data_type() {
                 return data_type;
             }
 
-            std::vector<std::string> elements;
-            int count = 1;
-            if (peek_type() != STRING_LITERAL) {
-                errors.push_back("Can only add strings to SET");}
-            elements.push_back(tokens[token_position].data);
-            
-            advance_and_check_ret_obj("Missing closing parenthesis");
+            int error_count = errors.size();
+            std::vector<object*> elements = parse_comma_seperated_list(CLOSE_PAREN);
+            if (error_count < errors.size()) {
+                push_error_return_error_object("Failed to parse SET elements"); }
 
-            while (peek_type() != CLOSE_PAREN && peek_type() != LINE_END) {
-                if (peek_type() != COMMA) {
-                    errors.push_back("Comma must seperate SET elements");
-                    break;}
-                
-                    advance_and_check_ret_obj("SET missing element after comma");
-                
-                if (peek_type() != STRING_LITERAL) {
-                    errors.push_back("Can only add strings to SET");}
-                
-                elements.push_back(peek_data());
-                
-                advance_and_check_ret_obj("SET missing closing parenthesis");
+            if (elements.size() == 0) {
+                push_error_return_error_object("Failed to parse SET elements, return elements with size 0"); }
 
-                if (count++ == 64) {
-                    errors.push_back("SET cannot have more than 64 elements");
-                    break;}
-            }
+            advance_and_check_ret_obj("SET missing closing parenthesis");
 
-            if (peek_type() != CLOSE_PAREN && errors.empty()) {
-                errors.push_back("SET missing closing parenthesis");}
+            if (peek_type() != CLOSE_PAREN) {
+                push_error_return_error_object("SET missing closing parenthesis");}
             
             data_type->data_type = SET;
-            data_type->elements = elements;
+            data_type->parameter = new group_object(elements);
             return data_type;
         } else {
             data_type->data_type = SET;
@@ -1424,7 +1077,7 @@ static object* parse_data_type() {
             if (peek_type() == CLOSE_PAREN) {
                 advance_and_check_ret_obj("parse_data_type(): ");
                 data_type->data_type = BIT;
-                data_type->parameter_value = 1;
+                data_type->parameter = new integer_object(1);
                 return data_type;
             }
 
@@ -1450,11 +1103,11 @@ static object* parse_data_type() {
                 advance_and_check_ret_obj("parse_data_type(): ");
 
             data_type->data_type = BIT;
-            data_type->parameter_value = num;
+            data_type->parameter = new integer_object(num);
             return data_type;
         } else {
             data_type->data_type = BIT;
-            data_type->parameter_value = 1;
+            data_type->parameter = new integer_object(1);
             return data_type;
         }
         
@@ -1466,11 +1119,11 @@ static object* parse_data_type() {
                 advance_and_check_ret_obj("parse_data_type(): ");
                 if (unsign) {
                     data_type->data_type = INT;
-                    data_type->parameter_value = 10;
+                    data_type->parameter = new integer_object(10);
                     return data_type;
                 } else {
                     data_type->data_type = INT;
-                    data_type->parameter_value = 11;
+                    data_type->parameter = new integer_object(11);
                     return data_type;
                 }
             }
@@ -1498,11 +1151,11 @@ static object* parse_data_type() {
         } else {
             if (unsign) {
                 data_type->data_type = INT;
-                data_type->parameter_value = 10;
+                data_type->parameter = new integer_object(10);
                 return data_type;
             } else {
             data_type->data_type = INT;
-            data_type->parameter_value = 11;
+            data_type->parameter = new integer_object(11);
             return data_type;
             }
         }
@@ -1511,18 +1164,181 @@ static object* parse_data_type() {
         push_error_return_error_object_prev_tok("DECIMAL/DEC not supported, too complicated");
     } else if (type == FLOAT) {
         data_type->data_type = FLOAT;
-        data_type->parameter_value = 0;
         return data_type;
     }else if (type == DOUBLE) {
         data_type->data_type = DOUBLE;
-        data_type->parameter_value = 0;
         return data_type;
     }
 
     push_error_return_error_object("Unknown SQL data type");
 }
 
+object* prefix_parse_functions_with_token(token tok) {
+    switch (tok.type) {
+    case CHAR: case VARCHAR: case BOOL: case BOOLEAN: case DATE: case YEAR: case SET: case BIT: case INT: case INTEGER: case FLOAT: case DOUBLE: case NONE: 
+    case UNSIGNED: case ZEROFILL: case TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB: case DEC: case DECIMAL:
+        return parse_data_type(tok); break;
 
+    case SEMICOLON:
+        advance_and_check_ret_obj("No values after semicolon prefix");
+        return new semicolon_object(); break;
+    case MINUS:
+        return parse_prefix_minus(); break;
+    case INTEGER_LITERAL:
+        advance_and_check_ret_obj("No values after integer prefix");
+        return new integer_object(tok.data); break;
+    case STRING_LITERAL:
+        advance_and_check_ret_obj("No values after string prefix");
+
+        if (is_function_name(tok.data)) {
+            if (peek_type() != OPEN_PAREN) {
+                push_error_return_error_object("Function missing open parenthesis"); }
+            int error_count = errors.size();
+            std::vector<object*> arguments = parse_comma_seperated_list(CLOSE_PAREN);
+            if (error_count < errors.size()) {
+                push_error_return_error_object("Failed to get function arguments"); }
+            //advance_and_check_ret_obj("No values after closing parenthesis"); gone for now
+            return new function_call_object(tok.data, arguments);
+        }
+
+        if (is_sql_data_type_token(peek())) {
+            object* obj = parse_expression(LOWEST);
+            if (obj->type() == ERROR_OBJ) {
+                return obj; }
+            
+            if (obj->type() != SQL_DATA_TYPE_OBJ) {
+                push_error_return_error_object("For now parameters must be a string literal followed by an SQL data type, can make generic later"); }
+            
+            return new parameter_object(tok.data, static_cast<SQL_data_type_object*>(obj));
+        }
+
+        return new string_object(tok.data); break;
+    case OPEN_PAREN:{
+        advance_and_check_ret_obj("No values after open parenthesis in expression");
+        object* expression =  parse_expression(LOWEST);
+        if (peek_type() != CLOSE_PAREN) {
+            push_error_return_error_object("Expected closing parenthesis");}
+        advance_and_check_ret_obj("No values after close parenthesis in expression");
+        return expression;
+    } break;
+    case ASTERISK:
+        advance_and_check_ret_obj("No values after * prefix");
+        return new string_object(tok.data); break;
+    case AS:
+        return parse_prefix_as(); break;
+    case IF:
+        return parse_prefix_if(); break;
+    case ELSIF:
+        return parse_prefix_if(); break;
+    case LESS_THAN:
+        advance_and_check_ret_obj("No values after less than in expression");
+        if (token_position < tokens.size()) { // NOT CHECKED !!
+            if (peek_type() == EQUAL) {
+                advance_and_check_ret_obj("No values after <= in expression");
+                return new operator_object(LESS_THAN_OR_EQUAL_TO_OP);
+            }
+        }
+        return new operator_object(LESS_THAN_OP);
+    case RETURN: {
+        advance_and_check_ret_obj("No values after RETURN in expression");
+        object* expression = parse_expression(LOWEST);
+        if (peek_type() == SEMICOLON) {
+            advance_and_check_ret_obj("No values after SEMICOLON in return statement"); }
+        return new return_statement(expression);
+    } break;
+    case ELSE:
+        return parse_block_statement(); break;
+    case END:
+        advance_and_check_ret_obj("No values after END in expression");
+        if (peek_type() == IF) {
+            advance_and_check_ret_obj("No values after END IF in expression");
+            if (peek_type() == SEMICOLON) {
+                advance_and_check_ret_obj("No values after SEMICOLON in END IF statement"); }
+            return new end_if_statement(); 
+        }
+
+        if (peek_type() == SEMICOLON) {
+            advance_and_check_ret_obj("No values after SEMICOLON in END statement"); }
+
+        return new end_statement(); break;
+    default:
+        push_error_return_error_object("No prefix function for (" + token_type_to_string(tok.type) + ")");
+    }
+}
+object* infix_parse_functions_with_obj(object* left) {
+    switch (peek_type()) {
+    case PLUS:
+        return parse_infix_operator(left); break;
+    case MINUS:
+        return parse_infix_operator(left); break;
+    case ASTERISK:
+        return parse_infix_operator(left); break;
+    case SLASH:
+        return parse_infix_operator(left); break;
+    case DOT:
+        return parse_infix_operator(left); break;
+    case EQUAL:
+        return parse_infix_operator(left); break;
+    case GREATER_THAN:
+        return parse_infix_operator(left); break;
+    case LESS_THAN:
+        return parse_infix_operator(left); break;
+    default:
+        push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
+        return new error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
+    }
+}
+
+
+
+object* parse_expression(int precedence) {
+    
+    // std::cout << "parse_expression called with " << token_type_to_string(peek_type()) << std::endl;
+
+    object* left = prefix_parse_functions_with_token(peek());
+    if (!left || left->type() == ERROR_OBJ) {
+        return new error_object();}
+
+    while (peek_type() != LINE_END &&
+           peek_type() != CLOSE_PAREN &&
+           peek_type() != SEMICOLON &&
+           peek_type() != COMMA && 
+           precedence < numeric_precedence(peek()) ) {
+            left = infix_parse_functions_with_obj(left);
+            if (!left || left->type() == ERROR_OBJ) {
+                return new error_object();}
+
+            // advance_and_check_ret_obj("parse_expression(); infix missing right");
+
+            // left = infix_parse_functions_with_obj(left);
+            
+           }     
+        
+    return left;
+}
+        
+// Should probably move to evaluator !MAJOR
+static object* parse_default_value(SQL_data_type_object* data_type) {
+
+    if (peek_data() != "DEFAULT") {
+        push_error_return_error_object("parse_default_value(): called with non-DEFAULT value token");
+    }
+
+    advance_and_check_ret_obj("No value after DEFAULT");
+
+    object* obj = parse_expression(LOWEST);
+
+    std::cout << "default value parsed expression = " << obj->inspect() << std::endl;
+
+    // advance_and_check_ret_obj("Nothing after DEFAULT x");
+    
+    object* insert_obj = can_insert(obj, data_type);
+    if (insert_obj->type() == ERROR_OBJ) {
+        errors.push_back("Default value error, " + insert_obj->data());
+        return insert_obj;}
+
+    return insert_obj;
+}
 
 
 

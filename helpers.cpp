@@ -1,5 +1,7 @@
 
+
 #include "helpers.h"
+
 #include "object.h"
 
 #include <vector>
@@ -17,7 +19,9 @@ std::span<const char* const> token_type_span() {
             "OR", "REPLACE", "FUNCTION", "RETURNS", "BEGIN", "RETURN", "END", "IF", "THEN", "ELSIF", "ELSE","$$", "AS",
 
             "CHAR", "VARCHAR", "BOOL", "BOOLEAN", "DATE", "YEAR", "SET", "BIT", "INT", "INTEGER", "FLOAT", "DOUBLE", "NONE", "UNSIGNED", "ZEROFILL",
-            "TINYBLOB", "TINYTEXT", "MEDIUMTEXT", "MEDIUMBLOB", "LONGTEXT", "LONGBLOB", "DEC", "DECIMAL",
+            "TINYBLOB", "TINYTEXT", "MEDIUMTEXT", "MEDIUMBLOB", "LONGTEXT", "LONGBLOB", "DEC", "DECIMAL", 
+            
+            "NULL_TOKEN",
     };
     return token_type_to_string;
 }
@@ -47,6 +51,16 @@ bool is_string_data_type(SQL_data_type_object* data_type) {
     return false;
 }
 
+bool is_sql_data_type_token(token tok) {
+    switch (tok.type) {
+    case CHAR: case VARCHAR: case BOOL: case BOOLEAN: case DATE: case YEAR: case SET: case BIT: case INT: case INTEGER: case FLOAT: case DOUBLE: case NONE: case UNSIGNED: case ZEROFILL: case
+    TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB: case DEC: case DECIMAL: 
+        return true;
+    default:
+        return false;
+    }
+}
+
 // Returns false for plus and minus signs
 bool is_numeric_token(token tok) {
     switch (tok.type) {
@@ -59,16 +73,6 @@ bool is_numeric_token(token tok) {
     }
 }
 
-bool is_numeric_object(object* obj) {
-    switch (obj->type()) {
-    case INTEGER_OBJ:
-        return true;
-    case DECIMAL_OBJ:
-        return true;
-    default:
-        return false;
-    }
-}
 
 bool is_string_object(object* obj) {
     switch (obj->type()) {
@@ -79,12 +83,22 @@ bool is_string_object(object* obj) {
     }
 }
 
-bool is_listable(object* obj) {
-    if (is_numeric_object(obj) ||
-        is_string_object(obj)) {
+bool is_numeric_object(object* obj) {
+    switch(obj->type()) {
+    case INTEGER_OBJ: case DECIMAL_OBJ:
         return true;
+    default:
+        return false;
     }
-    return false;
+}
+
+bool is_conditional_object(object* obj) {
+    switch (obj->type()) {
+    case INFIX_EXPRESSION_OBJ:
+        return true;
+    default:
+        return false;
+    }
 }
 
 
@@ -149,7 +163,10 @@ object* can_insert(object* insert_obj, SQL_data_type_object* data_type) {
             return new string_object(insert_obj->data());
             break;
         case STRING_OBJ: {
-            int max_length = data_type->parameter_value;
+            if (data_type->parameter->type() != INTEGER_OBJ) {
+                err_obj->value = "can_insert(): varchar cannot be inserted into data type with non-integer parameter";
+                return err_obj; }
+            int max_length = static_cast<integer_object*>(data_type->parameter)->value;
             int insert_length = insert_obj->data().length();
             if (insert_length > max_length) {
                 err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") excedes max column length(" + data_type->inspect() + ")";

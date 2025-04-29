@@ -4,16 +4,16 @@
     // i.e (10 + 10) will return an integer_object with the value 20
 
 #include "token.h"
-#include "helpers.h"
 
 #include <string>
-#include <iostream>
-
+#include <vector>
 
 enum object_type {
     ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, PREFIX_OPERATOR_OBJ, SQL_DATA_TYPE_OBJ,
-    COLUMN_OBJ, FUNCTION_OBJ, OPERATOR_OBJ,
-    IF_STATEMENT, BLOCK_STATEMENT, END_IF_STATEMENT, END_STATEMENT, RETURN_STATEMENT
+    COLUMN_OBJ, EVALUATED_COLUMN_OBJ, FUNCTION_OBJ, OPERATOR_OBJ, SEMICOLON_OBJ, RETURN_VALUE_OBJ, ARGUMENT_OBJ, BOOLEAN_OBJ, FUNCTION_CALL_OBJ,
+    GROUP_OBJ, PARAMETER_OBJ, EVALUATED_FUNCTION_OBJ, VARIABLE_OBJ,
+
+    IF_STATEMENT, BLOCK_STATEMENT, END_IF_STATEMENT, END_STATEMENT, RETURN_STATEMENT,
 };
 
 class object {
@@ -105,9 +105,58 @@ class string_object : public object {
     std::string value;
 };
 
+class return_value_object : public object {
+    public:
+    return_value_object(object* val);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    object* value;
+};
+
+class argument_object : public object {
+    public:
+    argument_object(std::string set_name, object* val);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::string name;
+    object* value;
+};
+
+class variable_object : public object {
+    public:
+    variable_object(std::string set_name, object* val);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::string name;
+    object* value;
+};
+
+class boolean_object : public object {
+    public:
+    boolean_object(bool val);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    bool value;
+};
+
+
+
 //zerofill is implicitly unsigned im pretty sure
 class SQL_data_type_object: public object {
     public:
+    SQL_data_type_object();
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
@@ -115,39 +164,93 @@ class SQL_data_type_object: public object {
     public:
     token_type prefix;
     token_type data_type;
-    int parameter_value;
-    std::vector<std::string> elements; // for SET
+    object* parameter;
 };
 
-class function_object : public object {
+class parameter_object : public object {
     public:
+    parameter_object(std::string set_name, SQL_data_type_object* set_data_type);
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
 
     public:
     std::string name;
-    std::vector<std::pair<object*, token>> arguments;
-    SQL_data_type_object* return_type;
-    std::vector<object*> expressions;
+    SQL_data_type_object* data_type;
 };
 
-
-class column_object: public object {
+class function_object : public object {
     public:
-    column_object(std::string name, SQL_data_type_object* type, std::string default_val);
+    function_object();
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
 
     public:
-    std::string column_name;
+    std::string name;
+    std::vector<object*> parameters;
+    SQL_data_type_object* return_type;
+    std::vector<object*> expressions;
+};
+
+class evaluated_function_object : public object {
+    public:
+    evaluated_function_object(function_object* func, std::vector<parameter_object*> new_parameters);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::string name;
+    std::vector<parameter_object*> parameters;
+    SQL_data_type_object* return_type;
+    std::vector<object*> expressions;
+};
+
+class function_call_object : public object {
+    public:
+    function_call_object(std::string set_name, std::vector<object*> args);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::string name;
+    std::vector<object*> arguments;
+};
+
+
+class column_object: public object {
+    public:
+    column_object(std::string name, object* type);
+    column_object(std::string name, object* type, object* default_val);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::string name;
+    object* data_type;
+    object* default_value;
+};
+
+class evaluated_column_object: public object {
+    public:
+    evaluated_column_object(std::string name, SQL_data_type_object* type, std::string default_val);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::string name;
     SQL_data_type_object* data_type;
     std::string default_value;
 };
 
 class error_object : public object {
     public:
+    error_object();
+    error_object(std::string val);
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
@@ -156,8 +259,42 @@ class error_object : public object {
     std::string value;
 };
 
+class semicolon_object : public object {
+    public:
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+};
+
+class group_object : public object {
+
+    public:
+    group_object(std::vector<object*> objs);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::vector<object*> elements;
+};
 
 // Statements
+class block_statement : public object {
+
+    public:
+    block_statement();
+    block_statement(std::vector<object*> set_body);
+
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    std::vector<object*> body;
+};
+
 class if_statement : public object {
 
     public:
@@ -168,21 +305,8 @@ class if_statement : public object {
 
     public:
     object* condition;
-    std::vector<object*> body;
+    block_statement* body;
     object* other;
-};
-
-class block_statement : public object {
-
-    public:
-    block_statement(std::vector<object*> set_body);
-
-    std::string inspect() const override;
-    object_type type() const override;
-    std::string data() const override;
-
-    public:
-    std::vector<object*> body;
 };
 
 class end_if_statement : public object {
@@ -201,6 +325,7 @@ class end_statement : public object {
 
 class return_statement : public object {
     public:
+    return_statement();
     return_statement(object* expr);
     std::string inspect() const override;
     object_type type() const override;

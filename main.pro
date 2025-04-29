@@ -11,14 +11,17 @@ OBJECTS_DIR = build
 #C++ 20
 QMAKE_CXXFLAGS += -std=c++20
 
+# For CLANGD
+CONFIG += export_compile_commands
+
 
 
 # Suppress warnings
-CONFIG -= warn_on
-CONFIG += warn_off
-#QMAKE_CXXFLAGS -= Wsign-compare
-#QMAKE_CXXFLAGS += -Wno-sign-compare
-#QMAKE_CXXFLAGS += -Wall
+#CONFIG -= warn_on
+#CONFIG += warn_off
+QMAKE_CXXFLAGS -= Wsign-compare
+QMAKE_CXXFLAGS += -Wno-sign-compare
+QMAKE_CXXFLAGS += -Wall
 
 # Debug flags
 CONFIG += debug
