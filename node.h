@@ -27,6 +27,7 @@ class null_node : public node {
 
 class function : public node {
     public:
+    function(function_object* set_func);
     std::string inspect() override;
     node_type type() override;
     
@@ -36,11 +37,12 @@ class function : public node {
 
 class insert_into : public node {
     public:
+    insert_into(object* set_table_name, std::vector<object*> set_fields, std::vector<object*> set_values);
     std::string inspect() override;
     node_type type() override;
 
     public:
-    std::string table_name;
+    object* table_name;
     std::vector<object*> fields;
     std::vector<object*> values;
 };
@@ -48,36 +50,38 @@ class insert_into : public node {
 class select_from : public node {
     
     public:
-    select_from();
+    select_from(object* set_table_name, std::vector<object*> set_column_names, bool set_asterisk, object* set_condition);
     std::string inspect() override;
     node_type type() override;
 
     public:
-    std::string table_name;
-    std::vector<std::string> column_names;
+    object* table_name;
+    std::vector<object*> column_names;
     bool asterisk;
     object* condition;
 };
 
 class alter_table : public node {
     public:
+    alter_table(object* tab_name, object* tab_edit);
     std::string inspect() override;
     node_type type() override;
 
     public:
-    std::string table_name;
+    object* table_name;
     object* table_edit;
 };
 
 class create_table : public node {
 
     public:
+    create_table(object* set_table_name, std::vector<table_detail_object*> set_details);
     std::string inspect() override;
     node_type type() override;
 
     public:
-    std::string table_name;
-    std::vector<column_data> column_datas;
+    object* table_name;
+    std::vector<table_detail_object*> details;
 
 };
 

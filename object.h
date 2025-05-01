@@ -9,9 +9,9 @@
 #include <vector>
 
 enum object_type {
-    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, PREFIX_OPERATOR_OBJ, SQL_DATA_TYPE_OBJ,
+    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, PREFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, SQL_DATA_TYPE_OBJ,
     COLUMN_OBJ, EVALUATED_COLUMN_OBJ, FUNCTION_OBJ, OPERATOR_OBJ, SEMICOLON_OBJ, RETURN_VALUE_OBJ, ARGUMENT_OBJ, BOOLEAN_OBJ, FUNCTION_CALL_OBJ,
-    GROUP_OBJ, PARAMETER_OBJ, EVALUATED_FUNCTION_OBJ, VARIABLE_OBJ,
+    GROUP_OBJ, PARAMETER_OBJ, EVALUATED_FUNCTION_OBJ, VARIABLE_OBJ, TABLE_DETAIL_OBJECT,
 
     IF_STATEMENT, BLOCK_STATEMENT, END_IF_STATEMENT, END_STATEMENT, RETURN_STATEMENT,
 };
@@ -32,7 +32,7 @@ class null_object : public object {
 };
 
 enum operator_type {
-    ADD_OP, SUB_OP, MUL_OP, DIV_OP,
+    ADD_OP, SUB_OP, MUL_OP, DIV_OP, NEGATE_OP,
     EQUALS_OP, NOT_EQUALS_OP, LESS_THAN_OP, LESS_THAN_OR_EQUAL_TO_OP, GREATER_THAN_OP, GREATER_THAN_OR_EQUAL_TO_OP,
     OPEN_PAREN_OP, OPEN_BRACKET_OP,
     DOT_OP,
@@ -53,7 +53,7 @@ class operator_object : public object {
 
 class infix_expression_object : public object {
     public:
-    infix_expression_object(operator_object* set_op, object* set_left);
+    infix_expression_object(operator_object* set_op, object* set_left, object* set_right);
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
@@ -61,6 +61,18 @@ class infix_expression_object : public object {
     public:
     operator_object* op;
     object* left;
+    object* right;
+};
+
+class prefix_expression_object : public object {
+    public:
+    prefix_expression_object(operator_object* set_op, object* set_right);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    operator_object* op;
     object* right;
 };
 
@@ -157,6 +169,7 @@ class boolean_object : public object {
 class SQL_data_type_object: public object {
     public:
     SQL_data_type_object();
+    SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter);
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
@@ -178,6 +191,20 @@ class parameter_object : public object {
     std::string name;
     SQL_data_type_object* data_type;
 };
+
+class table_detail_object : public object {
+    public:
+    table_detail_object(object* set_name, object* set_data_type, object* set_default_value);
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+
+    public:
+    object* name;
+    object* data_type;
+    object* default_value;
+};
+
 
 class function_object : public object {
     public:
@@ -222,15 +249,14 @@ class function_call_object : public object {
 
 class column_object: public object {
     public:
-    column_object(std::string name, object* type);
-    column_object(std::string name, object* type, object* default_val);
+    column_object(object* name_data_type);
+    column_object(object* name_data_type, object* default_val);
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
 
     public:
-    std::string name;
-    object* data_type;
+    object* name_data_type;
     object* default_value;
 };
 

@@ -169,7 +169,7 @@ object* can_insert(object* insert_obj, SQL_data_type_object* data_type) {
             int max_length = static_cast<integer_object*>(data_type->parameter)->value;
             int insert_length = insert_obj->data().length();
             if (insert_length > max_length) {
-                err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") excedes max column length(" + data_type->inspect() + ")";
+                err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") excedes column's max length (" + data_type->parameter->inspect() + ")";
                 return err_obj;}
             return insert_obj;
         } break;

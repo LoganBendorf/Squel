@@ -19,6 +19,20 @@ class environment {
         functions.push_back(func);
         return true;
     }
+    
+    void add_or_replace_function(evaluated_function_object* new_func) {
+        bool exists = false;
+        for (int i = 0; i < functions.size(); i++) {
+            if (functions[i]->name == new_func->name) {
+                functions[i] = new_func;
+                exists = true;
+                break;
+            }
+        }
+
+        if (!exists) {
+            functions.push_back(new_func); }
+    }
 
     bool is_function(std::string name) {
         for (const auto& func : functions) {
@@ -56,6 +70,15 @@ class environment {
             variable_object* variable = new variable_object(arg->name, arg->value);
             variables.push_back(variable);
         }
+        return true;
+    }
+
+    bool add_variable(variable_object* var) {
+        if (is_variable(var->name)) {
+            return false; 
+        }
+
+        variables.push_back(var);
         return true;
     }
 

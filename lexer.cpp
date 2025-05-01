@@ -17,7 +17,7 @@ static int line_position_count = 0;
 
 static int read_string() {
     int start = input_position;
-    while (input_position < input.length() && (std::isalpha(input[input_position]) || input[input_position] == '_')) {
+    while (input_position < input.length() && (std::isalpha(input[input_position]) || input[input_position] == '_' || std::isdigit(input[input_position]) )) {
         input_position++;
     }
     //printf("start [%d], pos after read [%d]. ", start, input_position);
@@ -248,7 +248,7 @@ std::vector<token> lexer(std::string input_str) {
             input_position++;
             line_position_count++;
         } break;
-        default: {
+        default: { // Can put keywords in hashmap
             if (std::isalpha(input[input_position])) {
                 int start = read_string();
                 std::string word = input.substr(start, input_position - start);

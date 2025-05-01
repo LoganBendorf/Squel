@@ -1,5 +1,6 @@
 
 #include "evaluator.h"
+
 #include "node.h"
 #include "structs_and_macros.h"
 #include "helpers.h"
@@ -8,6 +9,7 @@
 
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 
 
@@ -21,12 +23,16 @@ static void eval_function(function* func, environment* env);
 static object* eval_run_function(function_call_object* func_call, environment* env);
 
 static void eval_alter_table(alter_table* info, environment* env);
-static void eval_create_table(const create_table* info);
-static void eval_select_from(select_from* info);
-static void print_table(table tab);
+static void eval_create_table(const create_table* info, environment* env);
+static void eval_select_from(select_from* info, environment* env);
+static void print_table();
 static void eval_insert_into(const insert_into* info, environment* env);
 
 static object* eval_expression(object* expression, environment* env);
+static object* eval_column(column_object* col, environment* env);
+
+static object* eval_prefix_expression(operator_object* op, object* right, environment* env);
+static object* eval_infix_expression(operator_object* op, object* left, object* right, environment* env);
 
 #define eval_push_error_return(x)               \
         std::string error = x;                  \
@@ -53,11 +59,11 @@ void eval(environment* env) {
                 printf("EVAL INSERT INTO CALLED\n");
                 break;
             case SELECT_FROM_NODE:
-                eval_select_from(static_cast<select_from*>(nodes[i]));
+                eval_select_from(static_cast<select_from*>(nodes[i]), env);
                 printf("EVAL SELECT FROM CALLED\n");
                 break;
             case CREATE_TABLE_NODE:
-                eval_create_table(static_cast<create_table*>(nodes[i]));
+                eval_create_table(static_cast<create_table*>(nodes[i]), env);
                 printf("EVAL CREATE TABLE CALLED\n");
                 break;
             case ALTER_TABLE_NODE:
@@ -94,74 +100,112 @@ static void eval_function(function* func, environment* env) {
 
     evaluated_function_object* evaluated_func = new evaluated_function_object(func->func, evaluated_parameters);
 
-    env->add_function(evaluated_func);
+    env->add_or_replace_function(evaluated_func);
 
     std::cout << "!! PRINTING LE FUNCTION !!\n\n";
 
     std::cout << evaluated_func->inspect() << std::endl;
 }
 
-static bool is_statement(object* obj) {
-    switch(obj->type()) {
-    case IF_STATEMENT: case BLOCK_STATEMENT: case END_IF_STATEMENT: case END_STATEMENT: case RETURN_STATEMENT:
-        return true;
+static object* eval_prefix_expression(operator_object* op, object* right, environment* env) {
+    
+    object* e_right = eval_expression(right, env);
+    
+    switch (op->op_type) {
+    case NEGATE_OP:
+        switch (e_right->type()) {
+        case INTEGER_OBJ:
+            return new integer_object( - std::stoi(e_right->data()));
+        case DECIMAL_OBJ:
+            return new decimal_object( - std::stod(e_right->data()));
+        default:
+            push_error_return_error_object("No negation operation for type (" + e_right->inspect() + ")");
+        }
     default:
-        return false;
+        push_error_return_error_object("No prefix " + op->inspect() + " operator known");
     }
 }
 
+static object* eval_infix_expression(operator_object* op, object* left, object* right, environment* env) {
 
-static object* eval_infix_expression(operator_object* op, object* left, object* right) {
+    object* e_left = eval_expression(left, env);
+    object* e_right = eval_expression(right, env);
+
 
     switch (op->op_type) {
         case ADD_OP:
-            if (is_numeric_object(left) && is_numeric_object(right)) {
-                return new integer_object(static_cast<integer_object*>(left)->value + static_cast<integer_object*>(right)->value);
+            if (is_numeric_object(e_left) && is_numeric_object(e_right)) {
+                return new integer_object(static_cast<integer_object*>(e_left)->value + static_cast<integer_object*>(e_right)->value);
             } 
-            else if (is_string_object(left) && is_string_object(right)) {
-                return new string_object(left->data() + right->data());
+            else if (is_string_object(e_left) && is_string_object(e_right)) {
+                return new string_object(e_left->data() + e_right->data());
             } 
             else {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
+                push_error_return_error_object("No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect());
+            }
+            
+        case SUB_OP:
+            if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
+                push_error_return_error_object(error_str);}
+            return new integer_object(static_cast<integer_object*>(e_left)->value - static_cast<integer_object*>(e_right)->value);
+            break;
+        case MUL_OP:
+            if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
+                push_error_return_error_object(error_str);}
+            return new integer_object(static_cast<integer_object*>(e_left)->value * static_cast<integer_object*>(e_right)->value);
+            break;
+        case DIV_OP:
+            if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
+                push_error_return_error_object(error_str);}
+            return new integer_object(static_cast<integer_object*>(e_left)->value / static_cast<integer_object*>(e_right)->value);
+            break;
+        case DOT_OP:
+            if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
+                push_error_return_error_object(error_str);}
+            return new decimal_object(e_left->data() + "." + e_right->data());
+            break;
+        case EQUALS_OP:
+            if (e_left->type() == STRING_OBJ && e_right->type() == STRING_OBJ) {
+                return new boolean_object(e_left->data() == e_right->data()); 
+            } else if (e_left->type() == INTEGER_OBJ && e_right->type() == INTEGER_OBJ) {
+                return new boolean_object(static_cast<integer_object*>(e_left)->value == static_cast<integer_object*>(e_right)->value); 
+            } else {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
                 push_error_return_error_object(error_str);
             }
             break;
-        case SUB_OP:
-            if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new integer_object(static_cast<integer_object*>(left)->value - static_cast<integer_object*>(right)->value);
-            break;
-        case MUL_OP:
-            if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new integer_object(static_cast<integer_object*>(left)->value * static_cast<integer_object*>(right)->value);
-            break;
-        case DIV_OP:
-            if (!is_numeric_object(left) || !is_numeric_object(right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new integer_object(static_cast<integer_object*>(left)->value / static_cast<integer_object*>(right)->value);
-            break;
-        case DOT_OP:
-            if (left->type() != INTEGER_OBJ || left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
-                push_error_return_error_object(error_str);}
-            return new decimal_object(left->data() + "." + right->data());
+        case NOT_EQUALS_OP:
+            if (e_left->type() == STRING_OBJ && e_right->type() == STRING_OBJ) {
+                return new boolean_object(e_left->data() != e_right->data()); 
+            } else if (e_left->type() == INTEGER_OBJ && e_right->type() == INTEGER_OBJ) {
+                return new boolean_object(static_cast<integer_object*>(e_left)->value != static_cast<integer_object*>(e_right)->value); 
+            } else {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
+                push_error_return_error_object(error_str);
+            }
             break;
         case LESS_THAN_OP:
-            if (left->type() != INTEGER_OBJ || left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + left->inspect() + " and " + right->inspect();
+            if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
                 push_error_return_error_object(error_str);}
-                return new boolean_object(static_cast<integer_object*>(left)->value < static_cast<integer_object*>(right)->value);
+            return new boolean_object(static_cast<integer_object*>(e_left)->value < static_cast<integer_object*>(e_right)->value);
+            break;
+        case GREATER_THAN_OP:
+            if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
+                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
+                push_error_return_error_object(error_str);}
+            return new boolean_object(static_cast<integer_object*>(e_left)->value > static_cast<integer_object*>(e_right)->value);
             break;
         default:
             push_error_return_error_object("No infix " + op->inspect() + " operator known");
     }
 }
 
-
+// can turn into while loop instead of recursively calling itself, for perf
 static object* eval_expression(object* expression, environment* env) {
 
     switch(expression->type()) {
@@ -177,7 +221,27 @@ static object* eval_expression(object* expression, environment* env) {
             return expression; break;
         case VARIABLE_OBJ:
             return static_cast<variable_object*>(expression)->value; break;
+        case SQL_DATA_TYPE_OBJ: {
+            SQL_data_type_object* cur = static_cast<SQL_data_type_object*>(expression);
+            object* param = eval_expression(cur->parameter, env);
+            if (param->type() == ERROR_OBJ) {
+                return param; }
+
+            if (param->type() != INTEGER_OBJ) {
+                push_error_return_error_object("For now parameters of SQL data type must evaluate to integer object, can be strings later when working on SET or ENUM"); }
+
+            cur = new SQL_data_type_object(cur->prefix, cur->data_type, param);
+
+            return cur;
+        } break;
+        case NULL_OBJ:
+            return expression; break;
+        case PREFIX_EXPRESSION_OBJ:
+            return eval_prefix_expression(static_cast<prefix_expression_object*>(expression)->op, static_cast<prefix_expression_object*>(expression)->right, env); break;
         // Basic stuff end
+
+        case COLUMN_OBJ:
+            return eval_column(static_cast<column_object*>(expression), env);
 
         case FUNCTION_CALL_OBJ:
             return eval_run_function(static_cast<function_call_object*>(expression), env); break;
@@ -194,30 +258,27 @@ static object* eval_expression(object* expression, environment* env) {
         case INFIX_EXPRESSION_OBJ: {
             infix_expression_object* condition = static_cast<infix_expression_object*>(expression);
 
-            if (condition->left->type() == STRING_OBJ) {
-                object* var = env->get_variable(condition->left->data());
-                if (var->type() == ERROR_OBJ) {
-                    return var; }
+            object* left = condition->left;
 
-                condition->left = eval_expression(var, env);
+            if (left->type() == STRING_OBJ) {
+                object* var = env->get_variable(left->data());
+                if (var->type() != ERROR_OBJ) {
+                    left = eval_expression(var, env);
+                }
             }
 
-            if (condition->right->type() == STRING_OBJ) {
-                object* var = env->get_variable(condition->right->data());
-                if (var->type() == ERROR_OBJ) {
-                    return var; }
+            object* right = condition->right;
 
-                condition->right = eval_expression(var, env);
+            if (right->type() == STRING_OBJ) {
+                object* var = env->get_variable(right->data());
+                if (var->type() != ERROR_OBJ) {
+                    right = eval_expression(var, env); 
+                }
             }
 
-            object* result = eval_infix_expression(condition->op, condition->left, condition->right);
+            object* result = eval_infix_expression(condition->op, left, right, env);
             if (result->type() == ERROR_OBJ) {
                 return result; }
-            
-            if (result->type() != BOOLEAN_OBJ) {
-                errors.push_back("Condition evaluation resulted in non-boolean");
-                return new error_object();
-            }
 
             return result;
         } break;
@@ -334,180 +395,251 @@ static object* eval_run_function(function_call_object* func_call, environment* e
 }
 
 static object* eval_column(column_object* col, environment* env) {
-    object* data_type = eval_expression(col->data_type, env);
-    if (data_type->type() == ERROR_OBJ) {
-        return new error_object(); }
+    object* parameter = eval_expression(col->name_data_type, env);
+    if (parameter->type() == ERROR_OBJ) {
+        return parameter; }
 
-    if (data_type->type() != SQL_DATA_TYPE_OBJ) {
-        errors.push_back("Column data type failed to evaluate to SQL data type object");
-        return new error_object(); }
+    if (parameter->type() != PARAMETER_OBJ) {
+        push_error_return_error_object("Column data type (" + col->name_data_type->inspect() + ")failed to evaluate to parameter object"); }
 
     object* default_value = eval_expression(col->default_value, env);
     if (default_value->type() == ERROR_OBJ) {
-        return new error_object(); }
+        return default_value; }
 
-    if (default_value->type() != STRING_OBJ) {
-        errors.push_back("Column default value failed to evaluate to string object");
-        return new error_object(); }
+    if (default_value->type() != STRING_OBJ && default_value->type() != NULL_OBJ) {
+        push_error_return_error_object("Column default value (" + col->default_value->inspect() + ") failed to evaluate to string object"); }
 
-    return new evaluated_column_object(col->name, static_cast<SQL_data_type_object*>(data_type), default_value->data());
+    if (default_value->type() == NULL_OBJ) {
+        default_value = new string_object(""); }
+
+    return new evaluated_column_object(static_cast<parameter_object*>(parameter)->name, static_cast<parameter_object*>(parameter)->data_type, default_value->data());
 }
 
 static void eval_alter_table(alter_table* info, environment* env) {
+
+    object* table_name = eval_expression(info->table_name, env);
+    if (table_name->type() == ERROR_OBJ) {
+        eval_push_error_return("Failed to evaluate table name (" + info->table_name->inspect() + ")"); }
+   
+    if (table_name->type() != STRING_OBJ) {
+        eval_push_error_return("Table name (" + info->table_name->inspect() + ") failed to evaluate to string"); }
+
+
+
     table* tab;
     bool tab_found = false;
     for (int i = 0; i < tables.size(); i++) {
-        if (tables[i].name == info->table_name) {
+        if (tables[i].name == table_name->data()) {
             tab = &tables[i];
             tab_found = true;
             break;}
     }
     
     if (!tab_found) {
-        errors.push_back("eval_select_from(): Table not found (" + info->table_name + ")");
-        return;}
+        eval_push_error_return("eval_alter_table(): Table not found (" + table_name->inspect() + ")"); }
 
-    switch (info->table_edit->type()) {
-    case COLUMN_OBJ: {
+    object* table_edit = eval_expression(info->table_edit, env);
+    if (table_edit->type() == ERROR_OBJ) {
+        eval_push_error_return("eval_alter_table(): Failed to evaluate table edit"); }
 
-        column_object* column_obj = static_cast<column_object*>(info->table_edit);
+    switch (table_edit->type()) {
+    case EVALUATED_COLUMN_OBJ: {
 
-        for (int i = 0; i < tab->column_datas.size(); i++) {
-            if (column_obj->name == tab->column_datas[i].field_name) {
-                errors.push_back("eval_alter_table(): Table already contains column with name (" + column_obj->name + ")");
-                return;
-            }
+        evaluated_column_object* column_obj = static_cast<evaluated_column_object*>(table_edit);
+
+        for (const auto& table_column : tab->column_datas){
+            if (column_obj->name == table_column.field_name) {
+                eval_push_error_return("eval_alter_table(): Table already contains column with name (" + column_obj->name + ")"); }
         }
 
-        object* obj = eval_column(column_obj, env);
-        if (obj->type() == ERROR_OBJ) {
-            errors.push_back("Failed to evaluated column"); return; }
-
-        if (obj->type() != EVALUATED_COLUMN_OBJ) {
-            errors.push_back("Failed to evaluated column, strange return value"); return; }
-
-        evaluated_column_object* evaluated_col = static_cast<evaluated_column_object*>(obj);
-
-        column_data col = {evaluated_col->name, evaluated_col->data_type, evaluated_col->default_value};
+        column_data col = {column_obj->name, column_obj->data_type, column_obj->default_value};
         tab->column_datas.push_back(col);
     } break;
+
     default:
-        errors.push_back("eval_alter_table(): Table edit not supported");
-        return;
+        eval_push_error_return("eval_alter_table(): Table edit (" + info->table_edit->inspect() + ") not supported");
     }
 }
 
 
-static void eval_create_table(const create_table* info) {
+
+static void eval_create_table(const create_table* info, environment* env) {
+
+    object* table_name = eval_expression(info->table_name, env);
+    if (table_name->type() == ERROR_OBJ) {
+        eval_push_error_return("CREATE TABLE: Failed to evaluate table name (" + info->table_name->inspect() + ")"); }
+   
+    if (table_name->type() != STRING_OBJ) {
+        eval_push_error_return("CREATE TABLE: Table name (" + info->table_name->inspect() + ") failed to evaluate to string"); }
+
 
     for (int i = 0; i < tables.size(); i++) {
-        if (tables[i].name == info->table_name) {
-            errors.push_back("Table already exists");
-            return;
+        if (tables[i].name == table_name->data()) {
+            eval_push_error_return("CREATE TABLE: Table (" + table_name->data() + ") already exists"); }
+    }
+
+    std::vector<column_data> column_datas;
+    for (const auto& detail : info->details) {
+        object* name = eval_expression(detail->name, env);
+        if (name->type() == ERROR_OBJ) {
+            eval_push_error_return("CREATE TABLE: Failed to evaluate column name (" + detail->name->inspect() + ")"); }
+        
+        if (name->type() != STRING_OBJ) {
+            eval_push_error_return("CREATE TABLE: Column name failed to evaluate to string (" + detail->name->inspect() + ")"); }
+
+        object* data_type = eval_expression(detail->data_type, env);
+        if (data_type->type() == ERROR_OBJ) {
+            eval_push_error_return("CREATE TABLE: Failed to evaluate data type (" + detail->data_type->inspect() + ")"); }
+        
+        if (data_type->type() != SQL_DATA_TYPE_OBJ) {
+            eval_push_error_return("CREATE TABLE: Data type entry failed to evaluate to SQL data type (" + detail->data_type->inspect() + ")"); }
+
+        if (detail->default_value->type() != NULL_OBJ) {
+            object* default_value = eval_expression(detail->default_value, env);
+            if (default_value->type() == ERROR_OBJ) {
+                eval_push_error_return("CREATE TABLE: Failed to evaluate column name (" + detail->default_value->inspect() + ")"); }
+            
+            if (default_value->type() != STRING_OBJ && default_value->type() != INTEGER_OBJ) {
+                eval_push_error_return("CREATE TABLE: Default value failed to evaluate to a string or a number (" + detail->default_value->inspect() + ")"); }
+                
+            column_data column(name->data(), static_cast<SQL_data_type_object*>(data_type), default_value->data());
+            column_datas.push_back(column);
+        } else {
+            column_data column(name->data(), static_cast<SQL_data_type_object*>(data_type), ""); // todo
+            column_datas.push_back(column);
         }
+
     }
 
     table tab;
-    tab.name = info->table_name;
-    tab.column_datas = info->column_datas;
+    tab.name = table_name->data();
+    tab.column_datas = column_datas;
 
     tables.push_back(tab);
 }
 
 
-static bool eval_condtion(operator_object* op, object* left, object* right, std::vector<column_data> columns, row tab_row) {
+static void eval_select_from(select_from* info, environment* env) {
 
-    // Search for column
-    int column_index = -1;
-    for (int i = 0; i < columns.size(); i++) {
-        if (columns[i].field_name == left->inspect()) {
-            column_index = i;
-            break;
-        }
-    }
-
-    std::string column_value = tab_row.column_values.at(column_index);
-
-    // For when i actually start using types instead of std::string for everything
-    // SQL_data_type_object* type = columns.at(column_index).data_type;
+    object* table_name = eval_expression(info->table_name, env);
+    if (table_name->type() == ERROR_OBJ) {
+        eval_push_error_return("Failed to evaluate table name (" + info->table_name->inspect() + ")"); }
+   
+    if (table_name->type() != STRING_OBJ) {
+        eval_push_error_return("Table name (" + info->table_name->inspect() + ") failed to evaluate to string"); }
 
 
-    switch (op->op_type) {
-    case EQUALS_OP:
-        if (column_value == right->data()) {
-            return true;
-            break;
-        }
-
-        std::cout << "CONDITION FAIL FOR (" + column_value + ", " + right->data() + ")" << std::endl;
-
-        // errors.push_back("eval_select_from(): Unknown = operation for " + left->inspect() + ", " + right->inspect());
-        return false;
-        break;
-    case GREATER_THAN_OP:
-        if (std::stoi(column_value) > std::stoi(right->data())) {
-            return true;
-            break;
-        }
-        return false;
-        break;
-    case LESS_THAN_OP:
-        if (std::stoi(column_value) < std::stoi(right->data())) {
-            return true;
-            break;
-        }
-        return false;
-        break;
-    default:
-        errors.push_back("eval_select_from(): Unknown condition operator, (" + op->inspect() + ")");
-        return false;
-    }
-}
-
-static void eval_select_from(select_from* info) {
 
     table tab;
     bool found = false;
     for (int i = 0; i < tables.size(); i++) {
-        if (tables[i].name == info->table_name) {
+        if (tables[i].name == table_name->data()) {
             tab = tables[i];
             found = true;
             break;}
     }
     
     if (!found) {
-        errors.push_back("eval_select_from(): Table not found (" + info->table_name + ")");
-        return;}
+        eval_push_error_return("eval_select_from(): Table not found (" + table_name->inspect() + ")"); }
 
+    std::vector<std::string> column_names;
     if (info->asterisk == true) {
-        for (int i = 0; i < tab.column_datas.size(); i++) {
-            info->column_names.push_back(tab.column_datas[i].field_name); }
+        for (const auto& column_data : tab.column_datas) {
+            column_names.push_back(column_data.field_name); 
+        }
+    } else {
+        for (const auto& column : info->column_names) {
+            object* column_name = eval_expression(column, env);
+            if (column_name->type() != STRING_OBJ) {
+                eval_push_error_return("SELECT FROM: Column (" + column->inspect() + "> failed to evaulated to a string"); }
+
+            column_names.push_back(column->data()); 
+        }
     }
     
-
-
+    std::vector<int> col_ids;
+    for (int i = 0; i < tab.column_datas.size(); i++) {
+        for (const auto& col_name : column_names) {
+            if (tab.column_datas[i].field_name == col_name) {
+                col_ids.push_back(i);
+                break;
+            }
+        }
+    }
+     
     std::vector<int> row_ids;
     if (info->condition->type() != NULL_OBJ) {
 
         if (info->condition->type() != INFIX_EXPRESSION_OBJ) {
-            errors.push_back("Unsupported condition type, (" + info->condition->inspect() + ")");
-            return;
-        }
+            eval_push_error_return("Unsupported condition type, (" + info->condition->inspect() + ")"); }
 
         infix_expression_object* condition = static_cast<infix_expression_object*>(info->condition);
 
+        object* e_left = eval_expression(condition->left, env);
+        if (e_left->type() == ERROR_OBJ) {
+            eval_push_error_return("SELECT FROM: Failed to evaluate (" + condition->left->inspect() + ")"); }
+        
+        object* e_right = eval_expression(condition->right, env);
+        if (e_right->type() == ERROR_OBJ) {
+            eval_push_error_return("SELECT FROM: Failed to evaluate (" + condition->right->inspect() + ")"); }
 
-        operator_object* op = condition->op;
-        object* left = condition->left;
-        object* right = condition->right;
+        int where_col_index = -1; 
+        if (e_left->type() == STRING_OBJ) {
+            for (const auto& col_id : col_ids) {
+                if (tab.column_datas[col_id].field_name == e_left->data()) {
+                    where_col_index = col_id;
+                }
+            }
+        } else if (e_right->type() == STRING_OBJ) {
+            for (const auto& col_id : col_ids) {
+                if (tab.column_datas[col_id].field_name == e_left->data()) {
+                    where_col_index = col_id;
+                }
+            }
+        } else {
+            eval_push_error_return("SELECT FROM: WHERE condition must contain a column name"); }
+
+        if (where_col_index == -1) {
+            eval_push_error_return("SELECT FROM: Could not find column name in WHERE condition"); }
+
+
 
         for (int i = 0; i < tab.rows.size(); i++) {
-            int error_count = errors.size();
+            
+            // Add to env
+            std::string cell_value = tab.rows[i].column_values[where_col_index];
+            token_type col_type = tab.column_datas[where_col_index].data_type->data_type;
 
-            bool should_add = eval_condtion(op, left, right, tab.column_datas, tab.rows[i]);
+            object* value;
+            switch (col_type) {
+            case INT: case INTEGER:
+                value = new integer_object(std::stoi(cell_value)); break;
+            case DECIMAL:
+                value = new decimal_object(std::stod(cell_value)); break;
+            case VARCHAR:
+                value = new string_object(cell_value); break;
+            default:
+                eval_push_error_return("Currently WHERE conditions aren't supported for " + token_type_to_string(col_type));
+            }
 
-            if (errors.size() > error_count) {
-                return;}
+            variable_object* var = new variable_object(tab.column_datas[where_col_index].field_name, value);
+            environment* row_env = new environment(env);
+            bool added = row_env->add_variable(var);
+
+            if (!added) {
+                eval_push_error_return("Failed to add variable (" + var->inspect() + ") to environment"); }
+            // env done
+
+            object* should_add_obj = eval_expression(condition, row_env);
+            if (should_add_obj->type() == ERROR_OBJ) {
+                eval_push_error_return("Failed to evaulate WHERE condition"); }
+
+            if (should_add_obj->type() != BOOLEAN_OBJ) {
+                eval_push_error_return("WHERE condition failed to evaluate to boolean"); }
+
+            bool should_add = false;
+            if (static_cast<boolean_object*>(should_add_obj)->data() == "TRUE") {
+                should_add = true; }
             
             if (should_add) {
                 row_ids.push_back(i);
@@ -520,39 +652,26 @@ static void eval_select_from(select_from* info) {
         }
     }
 
-        
 
 
     display_tab.to_display = true;
     display_tab.tab = tab;
-    display_tab.column_names = info->column_names;
+    display_tab.col_ids = col_ids;
     display_tab.row_ids = row_ids;
 
-    print_table(tab); // CMD line print, QT will do it's own thing in main
+    print_table(); // CMD line print, QT will do it's own thing in main
 
 }
 
-static void print_table(table tab) {
+static void print_table() {
+
+    table tab = display_tab.tab;
 
     std::cout << tab.name << ":\n";
-    // for (int i = 0; i < tab.column_datas.size(); i++) {
-    //     std::string name = tab.column_datas[i].field_name;
-    //     std::string to_print = name.substr(0, 8);
-    //     int pad_length = 8 - to_print.length();
-    //     std::string pad(pad_length, ' ');
-    //     std::string out_string = to_print + pad + " | ";
-    //     std::cout << out_string;
-    // }
 
     std::string field_names = "";
-    std::vector<int> row_indexes;
-    int j = 0;
-    for (int i = 0; i < display_tab.column_names.size(); i++) {
-        while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
-            j++;}
-        row_indexes.push_back(j);
-
-        std::string full_name = tab.column_datas[j].field_name;
+    for (const auto& col_id : display_tab.col_ids) {
+        std::string full_name = tab.column_datas[col_id].field_name;
 
         std::string name = full_name.substr(0, 10);
         int pad_length = 10 - name.length();
@@ -564,23 +683,13 @@ static void print_table(table tab) {
 
     std::cout << field_names <<std::endl;
 
-    // for (int i = 0; i < tab.rows.size(); i++) {
-    //     for(int j = 0; j < tab.rows[0].column_values.size(); j++) {
-    //         std::string name = tab.rows[i].column_values[j];
-    //         std::string to_print = name.substr(0, 8);
-    //         int pad_length = 8 - to_print.length();
-    //         std::string pad(pad_length, ' ');
-    //         std::string out_string = to_print + pad + " | ";
-    //         std::cout << out_string;
-    //     }
-    //     std::cout << std::endl;
-    // }
-
-    for (int i = 0; i < tab.rows.size(); i++) {
+    
+    for (const auto& row_index : display_tab.row_ids) {
         std::string row_values = "";
-        for (int j = 0; j < row_indexes.size(); j++) {
+        std::vector<std::string> column_values = display_tab.tab.rows[row_index].column_values;
+        for (const auto& col_id : display_tab.col_ids) {
 
-            std::string full_name = tab.rows[i].column_values[j];
+            std::string full_name = column_values[col_id];
 
             std::string name = full_name.substr(0, 10);
             int pad_length = 10 - name.length();
@@ -597,10 +706,19 @@ static void print_table(table tab) {
 
 static void eval_insert_into(const insert_into* info, environment* env) {
 
+    object* table_name = eval_expression(info->table_name, env);
+    if (table_name->type() == ERROR_OBJ) {
+        eval_push_error_return("Failed to evaluate table name (" + info->table_name->inspect() + ")"); }
+   
+    if (table_name->type() != STRING_OBJ) {
+        eval_push_error_return("Table name (" + info->table_name->inspect() + ") failed to evaluate to string"); }
+
+
+        
     table* tab_ptr;
     bool table_found = false;
     for (int i = 0; i < tables.size(); i++) {
-        if (tables[i].name == info->table_name) {
+        if (tables[i].name == table_name->data()) {
             tab_ptr = &tables[i];
             table_found = true;
             break;}
@@ -615,60 +733,95 @@ static void eval_insert_into(const insert_into* info, environment* env) {
     if (info->fields.size() > tab_ptr->column_datas.size()) {
         eval_push_error_return("INSERT INTO, more field names than table has columns");}
 
+    if (info->values.size() > tab_ptr->column_datas.size()) {
+        eval_push_error_return("INSERT INTO, more values than table has columns");}
+
     if (!table_found) { // More important errors should go last so basic mistakes are fixed first???
         eval_push_error_return("INSERT INTO, table not found");}
 
-    row roh;
-    int j = 0;
-    if (info->fields.size() > 0) {
-        for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
+    // evaluate fields
+    std::vector<std::string> field_names;
+    for (const auto& field : info->fields) {
+        object* evaluated_field = eval_expression(field, env);
+        if (evaluated_field->type() == ERROR_OBJ) {
+            eval_push_error_return("eval_insert_into(): Failed to evaluate field (" + field->inspect() + ") while inserting rows"); }
 
-            object* obj = eval_expression(info->fields[j], env);
-            if (obj->type() == ERROR_OBJ) {
-                return; }
+        if (evaluated_field->type() != STRING_OBJ) { // Can't be null >:(
+            eval_push_error_return("INSERT INTO: Field (" + field->inspect() + ") evaluated to non-string value"); }
 
-            if (obj->type() != STRING_OBJ) {
-                errors.push_back("INSERT INTO: Field evaluated to non-string value"); return; }
+        field_names.push_back(evaluated_field->data());
 
-            std::string name = obj->data();
-
-            if (tab_ptr->column_datas[i].field_name == name) {
-                object* value = eval_expression(info->values[j], env);
-                if (value->type() == ERROR_OBJ) {
-                    errors.push_back("eval_insert_into(): Failed to evaluate (" + info->values[j]->inspect() + ") while inserting rows"); return; }
-                    
-                if (!can_insert(value, tab_ptr->column_datas[i].data_type)) {
-                    errors.push_back("eval_insert_into(): (" + info->values[j]->inspect() + ") evaluated to non-insertable value while inserting rows"); return; }
-
-                roh.column_values.push_back(value->data());
-                j++;
-                continue;
-            }
-            roh.column_values.push_back(tab_ptr->column_datas[i].default_value);
+    }
+    // check if fields exist
+    for (const auto& name : field_names) {
+        bool found = false;
+        for (const auto& column_data : tab_ptr->column_datas) {
+            if (column_data.field_name == name) {
+                found = true; break; }
         }
-    } else {
-        for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
-            if (j < info->values.size()) {
-                object* value = eval_expression(info->values[j], env);
-                if (value->type() == ERROR_OBJ) {
-                    errors.push_back("eval_insert_into(): Failed to evaluate (" + info->values[j]->inspect() + ") while inserting rows"); return; }
-                    
-                if (!can_insert(value, tab_ptr->column_datas[i].data_type)) {
-                    errors.push_back("eval_insert_into(): (" + info->values[j]->inspect() + ") evaluated to non-insertable value while inserting rows"); return; }
 
-                roh.column_values.push_back(value->data());
-                j++;
-                continue;
-            }
-            roh.column_values.push_back(tab_ptr->column_datas[i].default_value);
-        }
+        if (!found) {
+            eval_push_error_return("INSERT INTO: Could not find field (" + name + ") in table + (" + tab_ptr->name + ")"); }
     }
 
-    if (j < info->values.size()) {
-        eval_push_error_return("INSERT INTO, field name (" + info->fields[j]->inspect() + ") not found"); }
+    // evaluate values
+    std::vector<object*> values;
+    for (const auto& value : info->values) {
+        object* evaluated_value = eval_expression(value, env);
 
-    if (j > info->values.size()) {
-        eval_push_error_return("eval_insert_into(): werid bug");}
+        if (evaluated_value->type() == ERROR_OBJ) {
+            eval_push_error_return("eval_insert_into(): Failed to evaluate value (" + value->inspect() + ") while inserting rows"); }
+
+        values.push_back(evaluated_value);
+    }
+
+    row roh;
+    if (info->fields.size() > 0) {
+
+        // If field matches column name, add. else add default value
+        for (int i = 0; i < tab_ptr->column_datas.size(); i++) {
+            bool found = false;
+            int id = 0;
+            for (int j = 0; j < field_names.size(); j++) {
+                if (tab_ptr->column_datas[i].field_name == field_names[j]) {
+                    id = j;
+                    found = true; 
+                    break; 
+                } 
+            }
+
+            if (!found) {
+                roh.column_values.push_back(tab_ptr->column_datas[i].default_value); }
+
+            if (found) {
+                object* value = values[id];
+
+                object* insertable = can_insert(value, tab_ptr->column_datas[i].data_type);
+                if (insertable->type() == ERROR_OBJ) {
+                    errors.push_back(insertable->data());
+                    eval_push_error_return("INSERT INTO: Value (" + value->inspect() + ") evaluated to non-insertable value while inserting rows"); }
+
+                roh.column_values.push_back(insertable->data()); 
+            }
+
+        }
+    } else {
+        int i = 0;
+        for (i = 0; i < info->values.size(); i++) {
+
+            object* value = values[i];
+
+            object* insertable = can_insert(value, tab_ptr->column_datas[i].data_type);
+            if (insertable->type() == ERROR_OBJ) {
+                errors.push_back(insertable->data());
+                eval_push_error_return("INSERT INTO: Value (" + value->inspect() + ") evaluated to non-insertable value while inserting rows"); }
+
+            roh.column_values.push_back(insertable->data());
+        }
+
+        for (; i < tab_ptr->column_datas.size(); i++) {
+            roh.column_values.push_back(tab_ptr->column_datas[i].default_value); }
+    }
 
     if (!errors.empty()) {
         return;}

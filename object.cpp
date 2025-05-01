@@ -6,6 +6,7 @@
 
 #include "token.h"
 #include "helpers.h"
+#include "arena.h"
 
 #include <string>
 #include <span>
@@ -26,7 +27,7 @@ std::string null_object::data() const {
 
 static std::span<const char* const> operator_type_span() {
     static constexpr const char* operator_type_to_string[] = {
-        "ADD_OP", "SUB_OP", "MUL_OP", "DIV_OP",
+        "ADD_OP", "SUB_OP", "MUL_OP", "DIV_OP", "NEGATE_OP",
         "EQUALS_OP", "NOT_EQUALS_OP", "LESS_THAN_OP", "LESS_THAN_OR_EQUAL_TO_OP", "GREATER_THAN_OP", "GREATER_THAN_OR_EQUAL_TO_OP",
         "OPEN_PAREN_OP", "OPEN_BRACKET_OP",
         "DOT_OP",
@@ -53,23 +54,40 @@ std::string operator_object::data() const {
 
 
 // infix_expression_object
-infix_expression_object::infix_expression_object(operator_object* set_op, object* set_left) {
+infix_expression_object::infix_expression_object(operator_object* set_op, object* set_left, object* set_right) {
     op = set_op;
     left = set_left;
-    right = NULL;
+    right = set_right;
 }
 
 std::string infix_expression_object::inspect() const {
-    std::string str = "Op: " + op->inspect();
-    if (left != NULL) {
-        str += ". Left: " + left->inspect();}
-    if (right != NULL) {
-        str += ". Right: " + right->inspect();}
-    return str;}
+    std::string ret_str = "[Op: " + op->inspect();
+    ret_str += ". Left: " + left->inspect();
+    ret_str += ". Right: " + right->inspect() + "]";
+    return ret_str;
+}
 object_type infix_expression_object::type() const {
     return INFIX_EXPRESSION_OBJ;}
+
 std::string infix_expression_object::data() const {
-    return std::string("Shouldn't get data from infix expression object");}
+    return std::string("INFIX_EXPRESSION_OBJ");}
+
+// prefix_expression_object
+prefix_expression_object::prefix_expression_object(operator_object* set_op, object* set_right) {
+    op = set_op;
+    right = set_right;
+}
+
+std::string prefix_expression_object::inspect() const {
+    std::string ret_str = "[Op: " + op->inspect();
+    ret_str += ". Right: " + right->inspect() + "]";
+    return ret_str;
+}
+object_type prefix_expression_object::type() const {
+    return PREFIX_EXPRESSION_OBJ;}
+
+std::string prefix_expression_object::data() const {
+    return std::string("PREFIX_EXPRESSION_OBJ");}
 
 
 
@@ -193,6 +211,12 @@ SQL_data_type_object::SQL_data_type_object() {
     parameter = new null_object();
 }
 
+SQL_data_type_object::SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter) {
+    prefix = set_prefix;
+    data_type = set_data_type;
+    parameter = set_parameter;
+}
+
 std::string SQL_data_type_object::inspect() const {
     std::string ret_str = "[Type: SQL data type, Data type: ";
     if (prefix != NONE) {
@@ -227,6 +251,30 @@ object_type parameter_object::type() const {
 }
 std::string parameter_object::data() const {
     return data_type->data();
+}
+
+// table_detail_object
+table_detail_object::table_detail_object(object* set_name, object* set_data_type, object* set_default_value) {
+    name = set_name;
+    data_type = set_data_type;
+    default_value = set_default_value;
+}
+
+std::string table_detail_object::inspect() const {
+    std::string ret_str = "[Type: Table detail, Name: " + name->inspect() + ", " + data_type->inspect();
+    ret_str += ", Default value: ";
+    if (default_value->type() != NULL_OBJ) {
+        ret_str += default_value->inspect(); }
+    ret_str += "]";
+    return ret_str;
+}
+
+object_type table_detail_object::type() const {
+    return TABLE_DETAIL_OBJECT;
+}
+
+std::string table_detail_object::data() const {
+    return name->data();
 }
 
 // function_object
@@ -320,22 +368,20 @@ std::string function_call_object::data() const {
 
 
 // column_object
-column_object::column_object(std::string set_name, object* type, object* default_val) {
-    name = set_name;
-    data_type = type;
+column_object::column_object(object* set_name_data_type, object* default_val) {
+    name_data_type = set_name_data_type;
     default_value = default_val;
 }
 
-column_object::column_object(std::string set_name, object* type) {
-    name = set_name;
-    data_type = type;
+column_object::column_object(object* set_name_data_type) {
+    name_data_type = set_name_data_type;
     default_value = new null_object();
 }
 
 std::string column_object::inspect() const {
-    std::string str = "[Column name: " + name + "], ";
-    str += data_type->inspect();
-    str += ", [Default: " + default_value->inspect()  + "]\n";
+    std::string str = "[Column: ";
+    str += name_data_type->inspect();
+    str += ", Default: " + default_value->inspect()  + "]\n";
     return str;
 }
 

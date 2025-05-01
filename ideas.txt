@@ -1,0 +1,16 @@
+
+
+during parsing/evaluation create big buffer and alloc from there,
+    after done free/zero the big chunk of memeory
+
+hashmap for keyords in lexer
+
+while loop for parse_expression instead of self-recursive calls,
+    same thing with eval_expression
+
+"Store the furthest error: In a backtracking parser, you can encounter multiple syntax errors; report the one furthest in the input. 
+A known strategy is to record any error only if it occurs at a later token position than previous errors​. 
+At the end, report the error that consumed the most tokens (i.e. the “farthest” reach) as it’s usually the most relevant​."
+Additional:
+    https://www.geeksforgeeks.org/error-recovery-in-predictive-parsing/     // idk
+    

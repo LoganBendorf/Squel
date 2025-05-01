@@ -26,7 +26,7 @@ typedef struct table {
 typedef struct display_table {
     bool to_display;
     table tab;
-    std::vector<std::string> column_names;
+    std::vector<int> col_ids;
     std::vector<int> row_ids;
 } display_table;
 

@@ -59,7 +59,7 @@ int main (int argc, char* argv[]) {
 
     QVBoxLayout* main_layout = new QVBoxLayout(&window);
 
-    QWidget* fat_layout_container = new QWidget();
+    QWidget* const fat_layout_container = new QWidget();
     main_layout->addWidget(fat_layout_container);
 
     QHBoxLayout* fat_layout = new QHBoxLayout(fat_layout_container);
@@ -218,7 +218,7 @@ int main (int argc, char* argv[]) {
                 QObject::connect(test_start_button, &QPushButton::clicked, [&, test, test_index]() {\
                     input = read_test(test, test_index);
                     current_test_label->setText(QString::fromStdString(input));
-                    if (input.length() > 600) {
+                    if (input.length() > 1000) {
                         std::cout << "INPUT TOO LONG >:(\n";
                         return;}
                     if (input.length() == 0) {
@@ -229,11 +229,11 @@ int main (int argc, char* argv[]) {
                     std::cout << "'" << input << "'\n";
                     std::cout << "DONE ---------------------------\n\n";
             
-                    std::vector<token> tokens = lexer(input);
+                    const std::vector<token> tokens = lexer(input);
                     print_tokens(tokens);
             
                     parser_init(tokens);
-                    std::vector<node*> nodes = parse();
+                    const std::vector<node*> nodes = parse();
                     print_nodes(nodes);
             
                     environment* env = eval_init(nodes);
@@ -346,43 +346,54 @@ static void display_graphical_table(QGridLayout* table_grid) {
 
     table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)), 0, 0);
 
-    if (display_tab.column_names.size() == 0) {
+    if (display_tab.col_ids.size() == 0) {
         return;}
 
-    // Column names
-    std::vector<int> row_indexes;
-    int j = 0;
-    for (int i = 0; i < display_tab.column_names.size(); i++) {
-        while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
-            j++;}
-        row_indexes.push_back(j);
-        int y = 1;
-        int x = i;  // can overflow
-        table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[j].field_name)), y, x);
+    // new begin
+    int y = 1;
+    int x = 0;
+    for (const auto& col_id : display_tab.col_ids) {
+        table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[col_id].field_name)), y, x);
+        x++;
     }
 
-    // for (row in rows) {
-    //     for (index in row_indexes) {
-    //         display row
-    //     }
-    // }
-    for (int i = 0; i < display_tab.row_ids.size(); i++) {
-        row tab_row = tab.rows[display_tab.row_ids[i]];
-        for (int j = 0; j < row_indexes.size(); j++) {
-            int y = i + 2;
-            int x = j;
-            table_grid->addWidget(new QLabel(QString::fromStdString(tab_row.column_values[j])), y, x);
+    x = 0;
+    y = 2;
+    for (const auto& row_index : display_tab.row_ids) {
+        std::vector<std::string> column_values = display_tab.tab.rows[row_index].column_values;
+        for (const auto& col_id : display_tab.col_ids) {
+
+            table_grid->addWidget(new QLabel(QString::fromStdString(column_values[col_id])), y, x);
+            x++;
         }
+        y++;
+        x = 0;
     }
 
 
 
-    // // Row data
-    // for (int i = 0; i < tab.rows.size(); i++) {
-    //     for (int j = 0; j < tab.rows[0].column_values.size(); j++) {
+    // new end
+
+    // // Column names
+    // std::vector<int> row_indexes;
+    // int j = 0;
+    // for (int i = 0; i < display_tab.column_names.size(); i++) {
+    //     while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
+    //         j++;}
+    //     row_indexes.push_back(j);
+    //     int y = 1;
+    //     int x = i;  // can overflow
+    //     table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[j].field_name)), y, x);
+    // }
+
+    // for (int i = 0; i < display_tab.row_ids.size(); i++) {
+    //     row tab_row = tab.rows[display_tab.row_ids[i]];
+    //     for (int j = 0; j < row_indexes.size(); j++) {
     //         int y = i + 2;
     //         int x = j;
-    //         table_grid->addWidget(new QLabel(QString::fromStdString(tab.rows[i].column_values[j])), y, x);
+    //         table_grid->addWidget(new QLabel(QString::fromStdString(tab_row.column_values[j])), y, x);
     //     }
     // }
+
+
 }
