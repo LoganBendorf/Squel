@@ -17,6 +17,11 @@ class node {
     virtual std::string inspect() = 0;
     virtual node_type type() = 0;
     virtual ~node() {};
+
+    static void* operator new(std::size_t size);
+    static void  operator delete(void* p) noexcept;
+    static void* operator new[](std::size_t size);
+    static void  operator delete[](void* p) noexcept;
 };
 
 class null_node : public node {

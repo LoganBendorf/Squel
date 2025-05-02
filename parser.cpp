@@ -24,6 +24,7 @@ static token prev_token = {ERROR, std::string("garbage"), 0, 0};
 static int loop_count = 0;
 
 static std::vector<std::string> function_names;
+extern std::vector<evaluated_function_object*> global_functions;
 
 struct numeric {
     bool is_decimal;
@@ -50,7 +51,7 @@ static bool is_function_name(std::string name);
 static token peek();
 static token_type peek_type();
 static std::string peek_data();
-static token peek_ahead();
+[[maybe_unused]]static token peek_ahead();
 
 
 enum precedences {
@@ -141,6 +142,12 @@ static bool is_function_name(std::string name) {
         if (func_name == name) {
             return true; }
     }
+
+    for (const auto& global_func : global_functions) {
+        if (global_func->name == name) {
+            return true; }
+    }
+
     return false;
 }
 
@@ -151,7 +158,6 @@ void parser_init(std::vector<token> toks) {
     loop_count = 0;
     function_names = {};
     nodes.clear();
-
 }
 
 

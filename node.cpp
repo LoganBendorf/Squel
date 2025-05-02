@@ -8,6 +8,24 @@
 #include <vector>
 #include <sstream>
 
+class arena;
+extern arena arena_inst;
+
+void* node::operator new(std::size_t size) {
+    return arena_inst.allocate(size);
+}
+void node::operator delete([[maybe_unused]] void* p) noexcept {
+    std::cout << "\n\nDELETE BAD!!!!\n\n";
+    exit(1);
+}
+void* node::operator new[](std::size_t size) {
+    return arena_inst.allocate(size);
+}
+void node::operator delete[]([[maybe_unused]] void* p) noexcept {
+    std::cout << "\n\nDELETE BAD!!!!\n\n";
+    exit(1);
+}
+
 
 // null_node
 std::string null_node::inspect() {

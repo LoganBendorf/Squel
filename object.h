@@ -4,6 +4,7 @@
     // i.e (10 + 10) will return an integer_object with the value 20
 
 #include "token.h"
+#include "arena.h"
 
 #include <string>
 #include <vector>
@@ -21,7 +22,13 @@ class object {
     virtual std::string inspect() const = 0;  
     virtual object_type type() const = 0;    
     virtual std::string data() const = 0;    
-    virtual ~object() = default;            
+    virtual ~object() = default;     
+    
+    static void* operator new(std::size_t size);
+    static void  operator delete(void* p) noexcept;
+    static void* operator new[](std::size_t size);
+    static void  operator delete[](void* p) noexcept;
+    
 };
 
 class null_object : public object {

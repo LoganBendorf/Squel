@@ -1,19 +1,18 @@
 
 QT += widgets
 TEMPLATE = app
-SOURCES += evaluator.cpp helpers.cpp lexer.cpp main.cpp parser.cpp print.cpp test_reader.cpp node.cpp object.cpp
-HEADERS += evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h
+SOURCES += evaluator.cpp helpers.cpp lexer.cpp main.cpp parser.cpp print.cpp test_reader.cpp node.cpp object.cpp environment.cpp arena.cpp
+HEADERS += evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h arena.h
 TARGET = squel
 
 DESTDIR = build
 OBJECTS_DIR = build
 
-#C++ 20
+# C++ 20
 QMAKE_CXXFLAGS += -std=c++20
 
-# For CLANGD
-CONFIG += export_compile_commands
-
+# Sanitizers
+QMAKE_LFLAGS += -fsanitize=address
 
 
 # Suppress warnings

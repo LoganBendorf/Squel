@@ -8,17 +8,21 @@
 #include "parser.h"
 #include "evaluator.h"
 #include "print.h"
+#include "arena.h"
 
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
 std::vector<table> tables;
+std::vector<evaluated_function_object*> global_functions;
 
 std::string input;
 
 display_table display_tab;
 
 std::vector<struct test> tests;
+
+extern arena arena_inst;
 
 // CURRENTLY WORKING ON:
 // CREATE TABLE
@@ -228,16 +232,21 @@ int main (int argc, char* argv[]) {
                     std::cout << "PRINTING INPUT -----------------\n";
                     std::cout << "'" << input << "'\n";
                     std::cout << "DONE ---------------------------\n\n";
-            
+                        
+                   
+                    arena_inst.init();
+
                     const std::vector<token> tokens = lexer(input);
                     print_tokens(tokens);
-            
+
                     parser_init(tokens);
                     const std::vector<node*> nodes = parse();
                     print_nodes(nodes);
-            
+
                     environment* env = eval_init(nodes);
                     eval(env);
+
+                    arena_inst.destroy();
             
                     if (!errors.empty()) {
                         display_errors(commands_results_label);
@@ -280,15 +289,19 @@ int main (int argc, char* argv[]) {
             std::cout << "No input\n";
             return;}
 
-        std::vector<token> tokens = lexer(input);
+        arena_inst.init();
+
+        const std::vector<token> tokens = lexer(input);
         print_tokens(tokens);
-        
+
         parser_init(tokens);
-        std::vector<node*> nodes = parse();
+        const std::vector<node*> nodes = parse();
         print_nodes(nodes);
-        
+
         environment* env = eval_init(nodes);
         eval(env);
+
+        arena_inst.destroy();
 
         if (!errors.empty()) {
             display_errors(commands_results_label);
@@ -313,9 +326,6 @@ int main (int argc, char* argv[]) {
 
         // Clean up for next loop
         display_tab.to_display = false;
-        // input_text_edit->clear();
-        errors.clear();
-        tokens.clear();
 
     });
 

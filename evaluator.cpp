@@ -19,6 +19,10 @@ extern display_table display_tab;
 
 static std::vector<node*> nodes;
 
+extern std::vector<std::string> warnings;
+
+extern std::vector<evaluated_function_object*> global_functions;
+
 static void eval_function(function* func, environment* env);
 static object* eval_run_function(function_call_object* func_call, environment* env);
 
@@ -34,14 +38,16 @@ static object* eval_column(column_object* col, environment* env);
 static object* eval_prefix_expression(operator_object* op, object* right, environment* env);
 static object* eval_infix_expression(operator_object* op, object* left, object* right, environment* env);
 
-#define eval_push_error_return(x)               \
-        std::string error = x;                  \
-        errors.push_back(error);                \
-        return                                  \
+static object* can_insert(object* insert_obj, SQL_data_type_object* data_type);
 
-#define push_error_return_error_object(x)       \
-    std::string error = x;                  \
-    errors.push_back(error);                \
+#define eval_push_error_return(x)     \
+        std::string error = x;        \
+        errors.push_back(error);      \
+        return                        \
+
+#define push_err_return_err_obj(x)    \
+    std::string error = x;            \
+    errors.push_back(error);          \
     return new error_object();
 
 environment* eval_init(std::vector<node*> nds) {
@@ -82,18 +88,16 @@ void eval(environment* env) {
     }
 }
 
-static void eval_function(function* func, environment* env) {
+static void eval_function (function* func, environment* env) {
 
     std::vector<parameter_object*> evaluated_parameters;
     for (const auto& param : func->func->parameters) {
         object* evaluated_param = eval_expression(param, env);
         if (evaluated_param->type() == ERROR_OBJ) {
-            return; }
+            eval_push_error_return("Failed to evaluate to function parameter"); }
 
         if (evaluated_param->type() != PARAMETER_OBJ) {
-            errors.push_back("Function parameter failed to evaluate to parameter object");
-            return;
-        }
+            eval_push_error_return("Function parameter failed to evaluate to parameter object"); }
 
         evaluated_parameters.push_back(static_cast<parameter_object*>(evaluated_param));
     }
@@ -101,6 +105,9 @@ static void eval_function(function* func, environment* env) {
     evaluated_function_object* evaluated_func = new evaluated_function_object(func->func, evaluated_parameters);
 
     env->add_or_replace_function(evaluated_func);
+
+    // For now just add all functions to global for fun
+    global_functions.push_back(evaluated_func);
 
     std::cout << "!! PRINTING LE FUNCTION !!\n\n";
 
@@ -119,10 +126,10 @@ static object* eval_prefix_expression(operator_object* op, object* right, enviro
         case DECIMAL_OBJ:
             return new decimal_object( - std::stod(e_right->data()));
         default:
-            push_error_return_error_object("No negation operation for type (" + e_right->inspect() + ")");
+            push_err_return_err_obj("No negation operation for type (" + e_right->inspect() + ")");
         }
     default:
-        push_error_return_error_object("No prefix " + op->inspect() + " operator known");
+        push_err_return_err_obj("No prefix " + op->inspect() + " operator known");
     }
 }
 
@@ -141,31 +148,31 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
                 return new string_object(e_left->data() + e_right->data());
             } 
             else {
-                push_error_return_error_object("No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect());
+                push_err_return_err_obj("No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect());
             }
             
         case SUB_OP:
             if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);}
+                push_err_return_err_obj(error_str);}
             return new integer_object(static_cast<integer_object*>(e_left)->value - static_cast<integer_object*>(e_right)->value);
             break;
         case MUL_OP:
             if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);}
+                push_err_return_err_obj(error_str);}
             return new integer_object(static_cast<integer_object*>(e_left)->value * static_cast<integer_object*>(e_right)->value);
             break;
         case DIV_OP:
             if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);}
+                push_err_return_err_obj(error_str);}
             return new integer_object(static_cast<integer_object*>(e_left)->value / static_cast<integer_object*>(e_right)->value);
             break;
         case DOT_OP:
             if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);}
+                push_err_return_err_obj(error_str);}
             return new decimal_object(e_left->data() + "." + e_right->data());
             break;
         case EQUALS_OP:
@@ -175,7 +182,7 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
                 return new boolean_object(static_cast<integer_object*>(e_left)->value == static_cast<integer_object*>(e_right)->value); 
             } else {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);
+                push_err_return_err_obj(error_str);
             }
             break;
         case NOT_EQUALS_OP:
@@ -185,23 +192,23 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
                 return new boolean_object(static_cast<integer_object*>(e_left)->value != static_cast<integer_object*>(e_right)->value); 
             } else {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);
+                push_err_return_err_obj(error_str);
             }
             break;
         case LESS_THAN_OP:
             if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);}
+                push_err_return_err_obj(error_str);}
             return new boolean_object(static_cast<integer_object*>(e_left)->value < static_cast<integer_object*>(e_right)->value);
             break;
         case GREATER_THAN_OP:
             if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
                 std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_error_return_error_object(error_str);}
+                push_err_return_err_obj(error_str);}
             return new boolean_object(static_cast<integer_object*>(e_left)->value > static_cast<integer_object*>(e_right)->value);
             break;
         default:
-            push_error_return_error_object("No infix " + op->inspect() + " operator known");
+            push_err_return_err_obj("No infix " + op->inspect() + " operator known");
     }
 }
 
@@ -227,8 +234,8 @@ static object* eval_expression(object* expression, environment* env) {
             if (param->type() == ERROR_OBJ) {
                 return param; }
 
-            if (param->type() != INTEGER_OBJ) {
-                push_error_return_error_object("For now parameters of SQL data type must evaluate to integer object, can be strings later when working on SET or ENUM"); }
+            if (param->type() != INTEGER_OBJ && param->type() != DECIMAL_OBJ && param->type() != NULL_OBJ) {
+                push_err_return_err_obj("For now parameters of SQL data type must evaluate to integer/decimal/none, can be strings later when working on SET or ENUM"); }
 
             cur = new SQL_data_type_object(cur->prefix, cur->data_type, param);
 
@@ -291,9 +298,7 @@ static object* eval_expression(object* expression, environment* env) {
                 return obj; }
 
             if (obj->type() != BOOLEAN_OBJ) {
-                errors.push_back("If statement condition returned non-boolean");
-                return new error_object();
-            }
+                push_err_return_err_obj("If statement condition returned non-boolean"); }
 
             boolean_object* condition_result = static_cast<boolean_object*>(obj);
 
@@ -310,11 +315,8 @@ static object* eval_expression(object* expression, environment* env) {
 
         } break;
         default:
-            errors.push_back("eval_expression(): Cannot evaluate expression " + expression->inspect());
-            return new error_object();
-    }
+            push_err_return_err_obj("eval_expression(): Cannot evaluate expression " + expression->inspect()); }
 
-    return new error_object();
 }
 
 std::vector<argument_object*> name_arguments(evaluated_function_object* function, function_call_object* func_call, environment* env) {
@@ -348,16 +350,19 @@ std::vector<argument_object*> name_arguments(evaluated_function_object* function
 
 static object* eval_run_function(function_call_object* func_call, environment* env) {
 
-    if (!env->is_function(func_call->name)) {
-        errors.push_back("Called non-existing function (" + func_call->name + ")");
-        return new error_object();
+    bool found = false;
+    for (const auto& global_func : global_functions) {
+        if (global_func->name == func_call->name) {
+            found = true; }
     }
+
+    if (!found && !env->is_function(func_call->name)) {
+        push_err_return_err_obj("Called non-existing function (" + func_call->name + ")"); }
     
     object* env_func = env->get_function(func_call->name);
     if (env_func->type() == ERROR_OBJ) {
-        errors.push_back("Function returned as error object (" + func_call->name + ")");
-        return new error_object();
-    }
+        push_err_return_err_obj("Function returned as error object (" + func_call->name + ")"); }
+
     evaluated_function_object* function = static_cast<evaluated_function_object*>(env_func);
 
     int error_count = errors.size();
@@ -368,16 +373,12 @@ static object* eval_run_function(function_call_object* func_call, environment* e
 
     
     if (named_args.size() != function->parameters.size()) {
-        errors.push_back("Function called with incorrect number of arguments, got " + std::to_string(named_args.size()) + " wanted " + std::to_string(function->parameters.size()));
-        return new error_object();
-    }
+        push_err_return_err_obj("Function called with incorrect number of arguments, got " + std::to_string(named_args.size()) + " wanted " + std::to_string(function->parameters.size())); }
 
     environment* function_env = new environment(env);
     bool ok = function_env->add_variables(named_args);
     if (!ok) {
-        errors.push_back("Failed to add function arguments as variables to function environment"); 
-        return new error_object();
-    }
+        push_err_return_err_obj("Failed to add function arguments as variables to function environment"); }
 
     for (const auto& line : function->expressions) {
         object* res = eval_expression(line, function_env);
@@ -390,8 +391,7 @@ static object* eval_run_function(function_call_object* func_call, environment* e
         
     }
 
-    errors.push_back("Failed to find return value");
-    return new error_object();
+    push_err_return_err_obj("Failed to find return value");
 }
 
 static object* eval_column(column_object* col, environment* env) {
@@ -400,14 +400,14 @@ static object* eval_column(column_object* col, environment* env) {
         return parameter; }
 
     if (parameter->type() != PARAMETER_OBJ) {
-        push_error_return_error_object("Column data type (" + col->name_data_type->inspect() + ")failed to evaluate to parameter object"); }
+        push_err_return_err_obj("Column data type (" + col->name_data_type->inspect() + ")failed to evaluate to parameter object"); }
 
     object* default_value = eval_expression(col->default_value, env);
     if (default_value->type() == ERROR_OBJ) {
         return default_value; }
 
     if (default_value->type() != STRING_OBJ && default_value->type() != NULL_OBJ) {
-        push_error_return_error_object("Column default value (" + col->default_value->inspect() + ") failed to evaluate to string object"); }
+        push_err_return_err_obj("Column default value (" + col->default_value->inspect() + ") failed to evaluate to string object"); }
 
     if (default_value->type() == NULL_OBJ) {
         default_value = new string_object(""); }
@@ -827,4 +827,91 @@ static void eval_insert_into(const insert_into* info, environment* env) {
         return;}
 
     tab_ptr->rows.push_back(roh);
+}
+
+
+
+static object* can_insert(object* insert_obj, SQL_data_type_object* data_type) {
+
+    error_object* err_obj = new error_object();
+
+    switch (data_type->data_type) {
+    case INT:
+        switch (insert_obj->type()) {
+        case INTEGER_OBJ:
+            return insert_obj; 
+            break;
+        case DECIMAL_OBJ:
+            warnings.push_back("Decimal implicitly converted to INT");
+            return new integer_object(insert_obj->data());
+            break;
+        default:
+            err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") has mismatching type with column (" + data_type->inspect() + ")";
+            return err_obj;
+            break;
+        }
+        break;
+    case FLOAT:
+        switch (insert_obj->type()) {
+        case INTEGER_OBJ:
+            warnings.push_back("Integer implicitly converted to FLOAT");
+            return new decimal_object(insert_obj->data());
+            break;
+        case DECIMAL_OBJ:
+            return insert_obj; 
+            break;
+        default:
+            err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") has mismatching type with column (" + data_type->inspect() + ")";
+            return err_obj;
+            break;
+        }
+        break;
+    case DOUBLE:
+    switch (insert_obj->type()) {
+        case INTEGER_OBJ:
+            warnings.push_back("Integer implicitly converted to DOUBLE");
+            return new decimal_object(insert_obj->data());
+            break;
+        case DECIMAL_OBJ:
+            return insert_obj; 
+            break;
+        default:
+            err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") has mismatching type with column (" + data_type->inspect() + ")";
+            return err_obj;
+            break;
+        }
+        break;
+    case VARCHAR:
+        switch (insert_obj->type()) {
+        case INTEGER_OBJ:
+            warnings.push_back("Integer implicitly converted to VARCHAR");
+            return new string_object(insert_obj->data());
+            break;
+        case DECIMAL_OBJ:
+            warnings.push_back("Decimal implicitly converted to VARCHAR");
+            return new string_object(insert_obj->data());
+            break;
+        case STRING_OBJ: {
+            if (data_type->parameter->type() != INTEGER_OBJ) {
+                err_obj->value = "can_insert(): varchar cannot be inserted into data type with non-integer parameter";
+                return err_obj; }
+            int max_length = static_cast<integer_object*>(data_type->parameter)->value;
+            int insert_length = insert_obj->data().length();
+            if (insert_length > max_length) {
+                err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") excedes column's max length (" + data_type->parameter->inspect() + ")";
+                return err_obj;}
+            return insert_obj;
+        } break;
+        default:
+            err_obj->value = "can_insert(): Value: (" + insert_obj->data() + ") has mismatching type with column (" + data_type->inspect() + ")";
+            return err_obj;
+            break;
+        }
+        break;
+    default:
+        err_obj->value = "can_insert(): " + data_type->inspect() + " is not supported YET";
+        return err_obj;
+        break;
+    }
+    
 }

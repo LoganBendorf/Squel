@@ -6,11 +6,30 @@
 
 #include "token.h"
 #include "helpers.h"
-#include "arena.h"
 
 #include <string>
 #include <span>
 #include <vector>
+
+#include <iostream> //temp
+
+class arena;
+extern arena arena_inst;
+
+void* object::operator new(std::size_t size) {
+    return arena_inst.allocate(size);
+}
+void object::operator delete([[maybe_unused]] void* p) noexcept {
+    std::cout << "\n\nDELETE BAD!!!!\n\n";
+    exit(1);
+}
+void* object::operator new[](std::size_t size) {
+    return arena_inst.allocate(size);
+}
+void object::operator delete[]([[maybe_unused]] void* p) noexcept {
+    std::cout << "\n\nDELETE BAD!!!!\n\n";
+    exit(1);
+}
 
 
 // null_object

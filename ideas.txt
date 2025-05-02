@@ -14,3 +14,16 @@ At the end, report the error that consumed the most tokens (i.e. the “farthest
 Additional:
     https://www.geeksforgeeks.org/error-recovery-in-predictive-parsing/     // idk
     
+
+Each object could have it's own eval function that is called instead of eval_expression, don't think this works for parse_expression though
+
+
+
+Can do something like this with const, but it feels weird
+    case FUNCTION_NODE:
+        eval_function(static_cast<const function*>(nodes[i]), env);
+        ...
+    
+    static void eval_function (const function* func, environment* env) {
+        ...
+    }
