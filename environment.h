@@ -1,19 +1,24 @@
 #pragma once
 
-#include <object.h>
-
 #include <vector>
 
-class environment {
-    public:
-    static void* operator new(std::size_t size);
-    static void  operator delete(void* p) noexcept;
-    static void* operator new[](std::size_t size);
-    static void  operator delete[](void* p) noexcept;
-    
+class object;
+class argument_object;
+class variable_object;
+class evaluated_function_object;
 
-    environment();
-    environment(environment* par);
+class environment {
+
+    public:
+    static void* operator new(std::size_t size, bool use_arena = true);
+    static void  operator delete([[maybe_unused]] void* ptr, [[maybe_unused]] bool b) noexcept;
+    static void  operator delete(void* ptr) noexcept;
+    static void* operator new[](std::size_t size, bool use_arena = true);
+    static void  operator delete[]([[maybe_unused]] void* p) noexcept;
+    
+    environment([[maybe_unused]] bool use_arena = true);
+    environment(environment* par, bool use_arena = true);
+    ~environment();
 
     bool add_function(evaluated_function_object* func);
     void add_or_replace_function(evaluated_function_object* new_func);
@@ -27,6 +32,9 @@ class environment {
 
     public:
     environment* parent;
-    std::vector<evaluated_function_object*> functions;     // can change to map later if i want     
-    std::vector<variable_object*> variables;
+    std::vector<evaluated_function_object*>* functions;     // can change to map later if i want     
+    std::vector<variable_object*>* variables;
+
+    protected:
+    bool in_arena = true;
 };

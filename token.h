@@ -18,6 +18,6 @@ enum token_type {
 typedef struct token {
     token_type type;
     std::string data;
-    int line;
-    int position;
+    size_t line;
+    size_t position;
 } token;

@@ -1,0 +1,8 @@
+CREATE TABLE membug (
+    hello INT
+);
+
+INSERT INTO membug (hello)
+VALUES (1);
+
+SELECT * FROM membug;

@@ -29,19 +29,19 @@ std::vector<struct test> init_read_test() {
     }
 
     // Sort tests in folder
-    for (int i = 0; i < tests.size(); i++) {
-        std::sort(tests[i].test_paths.begin(), tests[i].test_paths.end());
+    for (auto& test : tests) {
+        std::sort(test.test_paths.begin(), test.test_paths.end());
     }
-    
+
     if (tests.size() == 0) {
         printf("NO TESTS\n");
         exit(1);
     }
 
     std::cout << "PRINTING TEST NAMES ------------\n";
-    for (int i = 0; i < tests.size(); i++) {
-        for (int j = 0; j < tests[i].test_paths.size(); j++) {
-            std::cout << " " << tests[i].test_paths[j] << std::endl;
+    for (const auto& test : tests) {
+        for (const auto& test_path : test.test_paths) {
+            std::cout << " " << test_path << std::endl;
         }
     }
     std::cout << "DONE ---------------------------\n\n";
@@ -49,7 +49,7 @@ std::vector<struct test> init_read_test() {
     return tests;
 }
 
-std::string read_test(struct test test, int index) {
+std::string read_test(struct test test, size_t index) {
     
     if (test.current_test_num == test.max_tests) {
         return "NO MORE TESTS!!!!";

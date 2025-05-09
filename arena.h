@@ -1,56 +1,91 @@
-
 #pragma once
 
+#include <sanitizer/lsan_interface.h>
 
-
-#include <cstddef>   // for std::size_t
-#include <cstdlib>   // for std::malloc, std::free
-
+#include <cstddef>
+#include <cstdlib>
+#include <vector>
+#include <functional>
 #include <iostream>
 
-
+// Forward declare global arena instance
+class arena;
+extern arena arena_inst;
 
 class arena {
-    public:
-    arena()        { init(); }
-    ~arena()       { destroy(); }
-    void* allocate(size_t size) {
+public:
+    arena() {}
+    ~arena(){}
 
-        // 1) Round up next_off to the strictest alignment the platform allows
-        size_t align = alignof(std::max_align_t);
-        size_t aligned_off = (next_open_slot + align - 1) & ~(align - 1);
-        // 2) Check bounds
-        if (aligned_off + size > capacity)  {
-            std::cout << "Arena failed to allocate memory";
-            exit(999);
+    void construct() {
+        base = std::malloc(1 << 20);
+        if (!base) {
+            std::cerr << "Arena failed to init memory\n";
+            std::exit(1);
         }
-        // 3) Compute ptr and update offset
+        capacity = (1 << 20);
+        constructed = true;
+        std::cout << "\nArena Allocated\n";
+    }
+
+    void teardown() {
+        std::free(base);
+        base = nullptr;
+        constructed = false;
+    }
+
+    // Raw bump-allocation
+    void* allocate(size_t size, size_t align = alignof(std::max_align_t)) {
+        size_t aligned_off = (next_open_slot + align - 1) & ~(align - 1);
+        if (aligned_off + size > capacity) {
+            std::cerr << "Arena OOM\n";
+            std::exit(1);
+        }
         void* ptr = static_cast<char*>(base) + aligned_off;
         next_open_slot = aligned_off + size;
+        // __lsan_ignore_object(ptr);
         return ptr;
     }
 
+    // Record a destructor for later
+    void register_dtor(std::function<void()> fn) {
+        destructors.emplace_back(std::move(fn));
+    }
+
+
     void init() {
-        base = std::malloc(1 << 20);
         next_open_slot = 0;
-        capacity = (1 << 20);
-        if (!base) {
-            std::cout << "Arena failed to init memory";
-            exit(999);
-        };
+    }
+
+    void init(void* set_base, size_t size) {
+        if (constructed) {
+            std::cout << "Cannot custom initalize arena when it is already constructed\n";
+            exit(1);
+        }
+        base = set_base;
+        capacity = size;
+        next_open_slot = 0;
     }
 
     void destroy() {
-        if (base == nullptr) {
-            return; }
-        std::free(base);
-        base = nullptr;
-        next_open_slot = -1;
+        if (!base) return;
+        // run destructors in reverse order
+        for (auto it = destructors.rbegin(); it != destructors.rend(); ++it) {
+            (*it)();
+        }
+        destructors.clear();
+        next_open_slot = static_cast<size_t>(-1);
     }
 
-    public:
+    size_t get_usage() {
+        return next_open_slot;
+    }
+
+    private:
+    bool constructed = false;
     void* base = nullptr;
     size_t next_open_slot = 0;
     size_t capacity = 0;
-
+    std::vector<std::function<void()>> destructors;
 };
+

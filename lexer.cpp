@@ -9,14 +9,14 @@
 extern std::vector<std::string> errors;
 
 static std::string input;
-static int input_position;
+static size_t input_position;
 
-static int line_count = 1;
-static int line_position_count = 0;
+static size_t line_count = 1;
+static size_t line_position_count = 0;
 
 
-static int read_string() {
-    int start = input_position;
+static size_t read_string() {
+    size_t start = input_position;
     while (input_position < input.length() && (std::isalpha(input[input_position]) || input[input_position] == '_' || std::isdigit(input[input_position]) )) {
         input_position++;
     }
@@ -27,9 +27,9 @@ static int read_string() {
 }
 
 // Should be dumb, complicated numbers should be constructed in the PARSER (i.e decimals, negatives)
-static int read_number() {
-    int num_was_read = false;
-    int start = input_position;
+static size_t read_number() {
+    size_t num_was_read = false;
+    size_t start = input_position;
     while (input_position < input.length() && std::isdigit(input[input_position])) {
         num_was_read = true;
         input_position++;
@@ -38,11 +38,11 @@ static int read_number() {
     if (num_was_read) {
         return start;
     } else {
-        return -1;
+        return SIZE_T_MAX;
     }
 }
 
-static token create_token(token_type type, std::string data, int line, int line_position) {
+static token create_token(token_type type, std::string data, size_t line, size_t line_position) {
     return token{type, data, line, line_position};
 }
 
@@ -50,8 +50,8 @@ static token create_token(token_type type, std::string data, int line, int line_
 // Needs MORE testing
 static token parse_quoted_string(char type) {
     // start only used for token creation
-    int start = input_position;
-    int start_line = line_count;
+    size_t start = input_position;
+    size_t start_line = line_count;
 
     std::string out;
     while (input_position++ < input.length() && (line_position_count++)) {
@@ -250,13 +250,13 @@ std::vector<token> lexer(std::string input_str) {
         } break;
         default: { // Can put keywords in hashmap
             if (std::isalpha(input[input_position])) {
-                int start = read_string();
+                size_t start = read_string();
                 std::string word = input.substr(start, input_position - start);
 
                 bool is_keyword = false;
-                for (int i = 0; i < token_type_span().size(); i++) {
+                for (size_t i = 0; i < token_type_span().size(); i++) {
                     if (word == token_type_span()[i]) {
-                        token tok = create_token((token_type) i, word, line_count, line_position_count);
+                        token tok = create_token(static_cast<token_type>(i), word, line_count, line_position_count);
                         tokens.push_back(tok);
                         line_position_count += word.size();
                         is_keyword = true;
@@ -272,8 +272,8 @@ std::vector<token> lexer(std::string input_str) {
                 tokens.push_back(tok);
                 line_position_count += word.size();
             } else if (std::isdigit(input[input_position])) {
-                int start = read_number();
-                if (start == -1) {
+                size_t start = read_number();
+                if (start == SIZE_T_MAX) {
                     errors.push_back("Invalid number. Line = " + std::to_string(line_count) + ", position = " + std::to_string(line_position_count));
                     std::vector<token> garbage;
                     return garbage;

@@ -4,6 +4,9 @@
 
 #include <string>
 #include <span>
+#include <limits>
+
+#define SIZE_T_MAX std::numeric_limits<size_t>::max()
 
 class object;
 class SQL_data_type_object;

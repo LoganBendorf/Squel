@@ -1,11 +1,14 @@
 
 #pragma once
 
-#include "object.h"
-
 #include <string>
 #include <vector>
 
+enum heap_or_arena {
+    HEAP = false, ARENA = true
+};
+
+class SQL_data_type_object;
 
 typedef struct column_data {
     std::string field_name;
@@ -26,8 +29,8 @@ typedef struct table {
 typedef struct display_table {
     bool to_display;
     table tab;
-    std::vector<int> col_ids;
-    std::vector<int> row_ids;
+    std::vector<size_t> col_ids;
+    std::vector<size_t> row_ids;
 } display_table;
 
 struct test {

@@ -8,6 +8,7 @@
 #include <string>
 #include <span>
 
+
 std::span<const char* const> token_type_span() {
     static constexpr const char* token_type_to_string[] = {
         "ERROR", "CREATE", "TABLE", "SELECT", "FROM", "INSERT", "INTO", "VALUES", "STRING_LITERAL", "INTEGER_LITERAL", "OPEN_PAREN", "CLOSE_PAREN", "SEMICOLON",
@@ -23,8 +24,6 @@ std::span<const char* const> token_type_span() {
     };
     return token_type_to_string;
 }
-
-
 
 std::string token_type_to_string(token_type index) {
     return std::string(token_type_span()[index]);

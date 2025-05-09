@@ -5,6 +5,6 @@
 #include <vector>
 
 
-void print_column(table tab, int column_index);
+void print_column(table tab, size_t column_index);
 void print_tokens(std::vector<token> tokens);
 void print_nodes(std::vector<node*> nodes);

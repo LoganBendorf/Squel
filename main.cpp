@@ -13,16 +13,14 @@
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
-std::vector<table> tables;
-std::vector<evaluated_function_object*> global_functions;
+static std::vector<table> g_tables;
+static std::vector<evaluated_function_object*> g_functions;
 
 std::string input;
 
 display_table display_tab;
 
 std::vector<struct test> tests;
-
-extern arena arena_inst;
 
 // CURRENTLY WORKING ON:
 // CREATE TABLE
@@ -40,6 +38,33 @@ static auto clear_layout = [](QLayout* layout) {
     }
 };
 
+static auto toggle_show_test_children = [](QLayout* layout) {
+    for (int i = 0; i < layout->count(); ++i) {
+        QLayoutItem* item = layout->itemAt(i);
+        if (item) {
+            QWidget* widget = item->widget();
+            if (widget) {
+                widget->setVisible(!widget->isVisible());
+            }
+        }
+    }
+};
+
+static void clear_g_tables() {
+    for (const auto& tab : g_tables) {
+        for (const auto& col_data : tab.column_datas) {
+            delete col_data.data_type;
+        }
+    }
+    g_tables.clear();
+}
+
+static void clear_g_functions() {
+    for (const auto& func : g_functions) {
+        delete func;
+    }
+    g_functions.clear();
+}
 
 enum input_style {
     VISUAL, TEST
@@ -48,6 +73,8 @@ enum input_style {
 constexpr enum input_style input_style = TEST;
 
 int main (int argc, char* argv[]) {
+
+    // arena_inst.construct();
 
     display_tab.to_display = false;
 
@@ -150,23 +177,11 @@ int main (int argc, char* argv[]) {
     );    
     main_layout->insertWidget(0, clear_tables_button);
     QObject::connect(clear_tables_button, &QPushButton::clicked, [&] () {
-        tables.clear();
+        g_tables.clear();
         // Maybe should also clear the display table?
         std::cout << "Tables cleared" << std::endl;
     });
 
-
-    auto toggle_show_test_children = [](QLayout* layout) {
-        for (int i = 0; i < layout->count(); ++i) {
-            QLayoutItem* item = layout->itemAt(i);
-            if (item) {
-                QWidget* widget = item->widget();
-                if (widget) {
-                    widget->setVisible(!widget->isVisible());
-                }
-            }
-        }
-    };
 
     // table_grid->itemAt(0);
 
@@ -186,7 +201,7 @@ int main (int argc, char* argv[]) {
         
 
         // FOLDER BUTTONS
-        for (int i = 0; i < tests.size(); i++) {
+        for (size_t i = 0; i < tests.size(); i++) {
             struct test test = tests[i];
             QPushButton* folder_show_button = new QPushButton(test.folder_name.c_str());
             folder_show_button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); 
@@ -205,7 +220,7 @@ int main (int argc, char* argv[]) {
             
             // INDIVIDUAL TESTS
 
-            for (int j = 0; j < tests[i].test_paths.size(); j++) {
+            for (size_t j = 0; j < tests[i].test_paths.size(); j++) {
                 std::string path = test.test_paths[j];
                 path = path.substr(test.folder_name.length() + 1, path.length());
                 std::string button_name = path + ": Start test";
@@ -217,14 +232,16 @@ int main (int argc, char* argv[]) {
 
                 test_start_button->hide();
                 
-                int test_index = j;
+                size_t test_index = j;
 
                 QObject::connect(test_start_button, &QPushButton::clicked, [&, test, test_index]() {\
                     input = read_test(test, test_index);
                     current_test_label->setText(QString::fromStdString(input));
+
                     if (input.length() > 1000) {
                         std::cout << "INPUT TOO LONG >:(\n";
                         return;}
+
                     if (input.length() == 0) {
                         std::cout << "No input\n";
                         return;}
@@ -233,18 +250,33 @@ int main (int argc, char* argv[]) {
                     std::cout << "'" << input << "'\n";
                     std::cout << "DONE ---------------------------\n\n";
                         
-                   
-                    arena_inst.init();
+                    std::byte stack_buffer[1 << 15];
+                    arena_inst.init(stack_buffer, 1 << 15);
 
-                    const std::vector<token> tokens = lexer(input);
+                    std::vector<token> tokens = lexer(input);
                     print_tokens(tokens);
 
-                    parser_init(tokens);
-                    const std::vector<node*> nodes = parse();
+                    parser_init(tokens, g_functions);
+                    std::vector<node*> nodes = parse();
                     print_nodes(nodes);
 
-                    environment* env = eval_init(nodes);
-                    eval(env);
+                    environment* env = eval_init(nodes, g_functions, g_tables);
+                    std::pair<std::vector<evaluated_function_object*>, std::vector<table>> funcs_and_tables = eval(env);
+                    clear_g_functions();
+                    for (const auto& new_func : funcs_and_tables.first) {
+                        g_functions.push_back(static_cast<evaluated_function_object*>(new_func->clone(HEAP))); 
+                    }
+                    clear_g_tables();
+                    for (const auto& tab : funcs_and_tables.second) {
+                        std::vector<column_data> column_datas;
+                        for (const auto& col_data : tab.column_datas) {
+                            column_datas.push_back({col_data.field_name, col_data.data_type->clone(HEAP), col_data.default_value});
+                        }
+                        table new_tab = {tab.name, column_datas, tab.rows};
+                        g_tables.push_back(new_tab);
+                    }
+
+                    std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";
 
                     arena_inst.destroy();
             
@@ -262,8 +294,8 @@ int main (int argc, char* argv[]) {
 
                     if (!warnings.empty()) {
                         std::cout << "WARNINGS ----------------\n";
-                        for (int i = 0; i < warnings.size(); i++) {
-                            std::cout << "WARNING: " << warnings[i] << std::endl;
+                        for (const auto& warning : warnings) {
+                            std::cout << "WARNING: " << warning << std::endl;
                         }
                         std::cout << "DONE ---------------------------\n\n";
                     }
@@ -291,15 +323,28 @@ int main (int argc, char* argv[]) {
 
         arena_inst.init();
 
-        const std::vector<token> tokens = lexer(input);
+        std::vector<token> tokens = lexer(input);
         print_tokens(tokens);
 
-        parser_init(tokens);
-        const std::vector<node*> nodes = parse();
+        parser_init(tokens, g_functions);
+        std::vector<node*> nodes = parse();
         print_nodes(nodes);
 
-        environment* env = eval_init(nodes);
-        eval(env);
+        environment* env = eval_init(nodes, g_functions, g_tables);
+        std::pair<std::vector<evaluated_function_object*>, std::vector<table>> funcs_and_tables = eval(env);
+        clear_g_functions();
+        for (const auto& new_func : funcs_and_tables.first) {
+            g_functions.push_back(static_cast<evaluated_function_object*>(new_func->clone(HEAP))); 
+        }
+        clear_g_tables();
+        for (const auto& tab : funcs_and_tables.second) {
+            std::vector<column_data> column_datas;
+            for (const auto& col_data : tab.column_datas) {
+                column_datas.push_back({col_data.field_name, col_data.data_type->clone(HEAP), col_data.default_value});
+            }
+            table new_tab = {tab.name, column_datas, tab.rows};
+            g_tables.push_back(new_tab);
+        }
 
         arena_inst.destroy();
 
@@ -317,8 +362,8 @@ int main (int argc, char* argv[]) {
 
         if (!warnings.empty()) {
             std::cout << "WARNINGS ----------------\n";
-            for (int i = 0; i < warnings.size(); i++) {
-                std::cout << "WARNING: " << warnings[i] << std::endl;
+            for (const auto& warning : warnings) {
+                std::cout << "WARNING: " << warning << std::endl;
             }
             std::cout << "DONE ---------------------------\n\n";
         }
@@ -331,7 +376,15 @@ int main (int argc, char* argv[]) {
 
     window.show();
 
-    return app.exec();
+    
+    auto qt_return = app.exec();
+
+    clear_g_functions();
+    clear_g_tables();
+
+    // arena_inst.teardown();
+
+    return qt_return;
 }
 
 static void display_errors(QGridLayout* commands_results_label) {
@@ -339,13 +392,16 @@ static void display_errors(QGridLayout* commands_results_label) {
     clear_layout(commands_results_label);
     QLabel* error_label = new QLabel("Errors:");
     commands_results_label->addWidget(error_label, 0, 0);
-    for (int i = 0; i < errors.size(); i++) {
-        std::cout << "ERROR: " + errors[i] + "\n";
-        QLabel* results_label = new QLabel(QString::fromStdString(errors[i]));
-        int y = i + 1;
-        int x = 0;
+
+    int x = 0;
+    int y = 1;
+    for (const auto& error : errors) {
+        std::cout << "ERROR: " + error + "\n";
+        QLabel* results_label = new QLabel(QString::fromStdString(error));
         commands_results_label->addWidget(results_label, y, x);
+        y++;
     }
+
     errors.clear();
 }
 
@@ -379,31 +435,5 @@ static void display_graphical_table(QGridLayout* table_grid) {
         y++;
         x = 0;
     }
-
-
-
-    // new end
-
-    // // Column names
-    // std::vector<int> row_indexes;
-    // int j = 0;
-    // for (int i = 0; i < display_tab.column_names.size(); i++) {
-    //     while (tab.column_datas[j].field_name != display_tab.column_names[i]) {
-    //         j++;}
-    //     row_indexes.push_back(j);
-    //     int y = 1;
-    //     int x = i;  // can overflow
-    //     table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[j].field_name)), y, x);
-    // }
-
-    // for (int i = 0; i < display_tab.row_ids.size(); i++) {
-    //     row tab_row = tab.rows[display_tab.row_ids[i]];
-    //     for (int j = 0; j < row_indexes.size(); j++) {
-    //         int y = i + 2;
-    //         int x = j;
-    //         table_grid->addWidget(new QLabel(QString::fromStdString(tab_row.column_values[j])), y, x);
-    //     }
-    // }
-
 
 }
