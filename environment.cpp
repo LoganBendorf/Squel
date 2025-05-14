@@ -1,9 +1,10 @@
 
+#include "pch.h"
+
 #include "environment.h"
 
 #include <object.h>
 
-#include <vector>
 
 class arena;
 extern arena arena_inst;
@@ -185,4 +186,15 @@ object* environment::get_variable(std::string name) {
         return parent->get_variable(name); }
 
     return new error_object("Variable not found");
+}
+
+std::vector<std::string> environment::inspect_variables() {
+
+    std::vector<std::string> inspected;
+    inspected.reserve(variables->size());
+    for (const auto& var : *variables) {
+        inspected.push_back(var->inspect());
+    }
+
+    return inspected;
 }

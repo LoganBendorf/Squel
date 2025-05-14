@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vector>
+#include "pch.h"
 
 class object;
 class argument_object;
@@ -29,6 +29,7 @@ class environment {
     bool add_variable(variable_object* var);
     bool is_variable(std::string name);
     object* get_variable(std::string name);
+    std::vector<std::string> inspect_variables();
 
     public:
     environment* parent;

@@ -1,0 +1,9 @@
+CREATE OR REPLACE FUNCTION returns_20()
+  RETURNS INTEGER
+  AS $$
+  BEGIN
+    RETURN 20;
+  END;
+  $$;
+
+SELECT returns_20();

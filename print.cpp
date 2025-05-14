@@ -1,27 +1,13 @@
 
+#include "pch.h"
+
 #include "print.h"
 
 #include "helpers.h"
+#include "structs_and_macros.h"
+#include "node.h"
 
 #include <iomanip>
-#include <iostream>
-
-
-void print_column(table tab, size_t column_index) {
-
-    column_data col = tab.column_datas[column_index];
-
-    if (col.field_name.length() > 16) {
-        std::cout << "nah field name is too long to print";
-        exit(1);}
-
-    std::cout << col.field_name << std::endl;
-
-    for (size_t i = 0; i < tab.rows.size(); i++) {
-        std:: cout << tab.rows[column_index].column_values[i] << std::endl;
-    }
-}
-
 
 void print_tokens(std::vector<token> tokens) {
     std::cout << "PRINTING TOKENS ----------------\n";

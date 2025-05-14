@@ -1,0 +1,84 @@
+
+-- Preliminaries
+CREATE TABLE actor(
+    first_name VARCHAR(60),
+    last_name VARCHAR(60),
+    actor_id INT
+);
+CREATE TABLE payment(
+    payment_month INT,
+    payment_year INT,
+    rental_id INT
+);
+CREATE TABLE rental(
+    rental_id INT,
+    inventory_id INT
+);
+CREATE TABLE inventory(
+    inventory_id INT,
+    film_id INT
+);
+CREATE TABLE film_actor(
+    film_id INT,
+    actor_id INT
+);
+
+-- Preliminaries done
+
+
+CREATE OR REPLACE FUNCTION rent_category(number DOUBLE)
+  RETURNS VARCHAR
+  AS $$
+  BEGIN
+    IF number < 90 THEN
+      RETURN 'Low';
+    ELSIF number < 110 THEN
+      RETURN 'Medium';
+    ELSE
+      RETURN 'High';
+    END IF;
+  END;
+  $$;
+
+
+
+SELECT rent_category(10);
+SELECT rent_category(100);
+SELECT rent_category(1000);
+
+CREATE TABLE Actor_Rent_Date(
+    first_name VARCHAR(60),
+    last_name VARCHAR(60),
+    rent_month INT,
+    rent_year INT,
+    rents_that_month INT
+);
+
+CREATE TABLE Actor_Rent_Rating(
+    first_name VARCHAR(60),
+    last_name VARCHAR(60),
+    rent_rating VARCHAR(60)
+);
+
+SELECT * FROM Actor_Rent_Date;
+SELECT * FROM Actor_Rent_Rating;
+
+
+
+INSERT INTO Actor_Rent_Date(first_name, last_name, rent_month, rents_that_month)
+    SELECT
+        actor.first_name,
+        actor.last_name,
+        payment.month AS rent_month,
+        payment.year AS rent_year,
+        COUNT(payment.payment_data)
+        FROM
+            LEFT JOIN rental     ON payment.rental_id = rental.rental_id
+            LEFT JOIN inventory  ON rental.inventory_id = inventory.inventory_id
+            LEFT JOIN film_actor ON inventory.film_id = film_actor.film_id
+            LEFT JOIN actor      ON film_actor.actor_id = actor.actor_id
+            GROUP BY
+                actor.actor_id, actor.last_name, actor.first_name, rent_month, rent_year
+                ORDER BY
+                    actor.last_name, actor.first_name, rent_year, rent_month
+;    

@@ -6,6 +6,7 @@
 
 #include "token.h"
 #include "helpers.h"
+#include "structs_and_macros.h" // For table
 
 #include <string>
 #include <span>
@@ -17,15 +18,31 @@ static std::span<const char* const> object_type_span() {
     static constexpr const char* object_type_chars[] = {
         "ERROR_OBJ", "NULL_OBJ", "INFIX_EXPRESSION_OBJ", "PREFIX_EXPRESSION_OBJ", "INTEGER_OBJ", "DECIMAL_OBJ", "STRING_OBJ", "SQL_DATA_TYPE_OBJ",
         "COLUMN_OBJ", "EVALUATED_COLUMN_OBJ", "FUNCTION_OBJ", "OPERATOR_OBJ", "SEMICOLON_OBJ", "RETURN_VALUE_OBJ", "ARGUMENT_OBJ", "BOOLEAN_OBJ", "FUNCTION_CALL_OBJ",
-        "GROUP_OBJ", "PARAMETER_OBJ", "EVALUATED_FUNCTION_OBJ", "VARIABLE_OBJ", "TABLE_DETAIL_OBJECT",
+        "GROUP_OBJ", "PARAMETER_OBJ", "EVALUATED_FUNCTION_OBJ", "VARIABLE_OBJ", "TABLE_DETAIL_OBJECT", "COLUMN_INDEX_OBJECT", "TABLE_INFO_OBJECT", "TABLE_OBJECT",
+        "STAR_SELECT_OBJECT", "TABLE_AGGREGATE_OBJECT",
 
-        "IF_STATEMENT", "BLOCK_STATEMENT", "END_IF_STATEMENT", "END_STATEMENT", "RETURN_STATEMENT"
+        "IF_STATEMENT", "BLOCK_STATEMENT", "END_IF_STATEMENT", "END_STATEMENT", "RETURN_STATEMENT",
+
+        "INSERT_INTO_OBJECT", "SELECT_OBJECT", "SELECT_FROM_OBJECT",
     };
     return object_type_chars;
 }
 
 std::string object_type_to_string(object_type index) {
     return std::string(object_type_span()[index]);
+}
+
+static std::span<const char* const> operator_type_span() {
+    static constexpr const char* operator_type_to_string[] = {
+        "ADD_OP", "SUB_OP", "MUL_OP", "DIV_OP", "NEGATE_OP",
+        "EQUALS_OP", "NOT_EQUALS_OP", "LESS_THAN_OP", "LESS_THAN_OR_EQUAL_TO_OP", "GREATER_THAN_OP", "GREATER_THAN_OR_EQUAL_TO_OP",
+        "OPEN_PAREN_OP", "OPEN_BRACKET_OP", "AS_OP", "LEFT_JOIN_OP", "WHERE_OP", "GROUP_BY_OP", "ORDER_BY_OP", "ON_OP",
+        "DOT_OP",
+    };
+    return operator_type_to_string;
+}
+std::string operator_type_to_string(operator_type index) {
+    return std::string(operator_type_span()[index]);
 }
 
 
@@ -94,6 +111,28 @@ void object::operator delete[]([[maybe_unused]] void* ptr) noexcept {
         str_ptr->~RealString();                                                 \
     });
 
+    #define arena_alloc_std_vector(member, setter, type)                                                        \
+        void* member##_mem    = arena_inst.allocate(sizeof(std::vector<type>), alignof(std::vector<type>)); \
+        auto member##_ptr = new (member##_mem) std::vector<type>();                                         \
+        member   = member##_ptr;                                                                            \
+        arena_inst.register_dtor([member##_ptr]() {                                                         \
+            member##_ptr->std::vector<type>::~vector();                                                     \
+        });                                                                                                 \
+        for (const auto& elem : setter) {                                                                   \
+            member->push_back(elem);                                                                        \
+        }
+
+#define arena_alloc_std_vector_clone(member, setter, type)                                                   \
+        void* member##_mem    = arena_inst.allocate(sizeof(std::vector<type>), alignof(std::vector<type>)); \
+        auto member##_ptr = new (member##_mem) std::vector<type>();                                         \
+        member   = member##_ptr;                                                                            \
+        arena_inst.register_dtor([member##_ptr]() {                                                         \
+            member##_ptr->std::vector<type>::~vector();                                                     \
+        });                                                                                                 \
+        for (const auto& elem : setter) {                                                                   \
+            member->push_back(elem->clone(use_arena));                                                      \
+        }
+
 
 
 
@@ -114,20 +153,6 @@ null_object* null_object::clone(bool use_arena) const {
 }
 
 
-static std::span<const char* const> operator_type_span() {
-    static constexpr const char* operator_type_to_string[] = {
-        "ADD_OP", "SUB_OP", "MUL_OP", "DIV_OP", "NEGATE_OP",
-        "EQUALS_OP", "NOT_EQUALS_OP", "LESS_THAN_OP", "LESS_THAN_OR_EQUAL_TO_OP", "GREATER_THAN_OP", "GREATER_THAN_OR_EQUAL_TO_OP",
-        "OPEN_PAREN_OP", "OPEN_BRACKET_OP",
-        "DOT_OP",
-    };
-    return operator_type_to_string;
-}
-
-static std::string operator_type_to_string(operator_type index) {
-    return std::string(operator_type_span()[index]);
-}
-
 
 
 // operator_object
@@ -147,6 +172,70 @@ operator_object* operator_object::clone(bool use_arena) const {
     if (use_arena) {
         std::cout << "\\n\nnCLONED WITH ARENA!operator_object!!\n\n\n";}
     return new (use_arena) operator_object(op_type);
+}
+
+// Table Info Object
+table_info_object::table_info_object(table_object* set_tab, std::vector<size_t> set_col_ids, std::vector<size_t> set_row_ids, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        if (clone) {
+            tab = set_tab->clone(use_arena);
+        } else {
+            tab = set_tab;
+        }
+
+        arena_alloc_std_vector(col_ids, set_col_ids, size_t);
+
+        arena_alloc_std_vector(row_ids, set_row_ids, size_t);
+
+    } else {
+        tab = set_tab->clone(use_arena);
+        col_ids = new std::vector<size_t>;
+        for (const auto& col_id : set_col_ids) {
+            col_ids->push_back(col_id);
+        }
+        row_ids = new std::vector<size_t>;
+        for (const auto& row_id : set_row_ids) {
+            row_ids->push_back(row_id);
+        }
+    }
+}
+table_info_object::~table_info_object() {
+    if (!in_arena) {
+        // delete tab; Will be delete automatically I believe
+        delete col_ids;
+        delete row_ids;
+    }
+}
+std::string table_info_object::inspect() const {
+    std::string ret_str = "Table name: " + *tab->table_name + "\n";
+
+    ret_str += "Row ids: \n";
+    for (const auto& row_id : *row_ids) {
+        ret_str += std::to_string(row_id) + ", ";
+    }
+    if (row_ids->size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2);
+    }
+
+    ret_str += "\nColumn ids: \n";
+    for (const auto& col_id : *col_ids) {
+        ret_str += std::to_string(col_id) + ", ";
+    }
+    if (col_ids->size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2);
+    }
+
+    return ret_str; 
+}
+object_type table_info_object::type() const {
+    return TABLE_INFO_OBJECT;
+}
+std::string table_info_object::data() const {
+    return "TABLE_INFO_OBJECT";
+}
+table_info_object* table_info_object::clone(bool use_arena) const {
+    return new (use_arena) table_info_object(tab, *col_ids, *row_ids, use_arena, true);
 }
 
 // infix_expression_object
@@ -192,6 +281,9 @@ infix_expression_object* infix_expression_object::clone(bool use_arena) const {
         std::cout << "\\n\nnCLONED WITH ARENA!infix_expression_object!!\n\n\n";}
     return new (use_arena) infix_expression_object(op, left, right, use_arena, true);
 }
+operator_type infix_expression_object::get_op_type() const {
+    return op->op_type;
+}
 
 // prefix_expression_object
 prefix_expression_object::prefix_expression_object(operator_object* set_op, object* set_right, bool use_arena, bool clone) {
@@ -230,6 +322,9 @@ prefix_expression_object* prefix_expression_object::clone(bool use_arena) const 
     if (use_arena) {
         std::cout << "\\n\nnCLONED WITH ARENA!prefix_expression_object!!\n\n\n";}
     return new (use_arena) prefix_expression_object(op, right, use_arena, true);
+}
+operator_type prefix_expression_object::get_op_type() const {
+    return op->op_type;
 }
 
 // integer_object
@@ -526,20 +621,19 @@ parameter_object* parameter_object::clone(bool use_arena) const {
 }
 
 // table_detail_object
-table_detail_object::table_detail_object(object* set_name, object* set_data_type, object* set_default_value, bool use_arena, bool clone) {
+table_detail_object::table_detail_object(std::string set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool use_arena, bool clone) {
     in_arena = use_arena;
     if (use_arena) {
+        arena_alloc_std_string(name, set_name);
         if (clone) {
-            name = set_name->clone(use_arena);
             data_type = set_data_type->clone(use_arena);
             default_value = set_default_value->clone(use_arena);
         } else {
-            name = set_name;
             data_type = set_data_type;
             default_value = set_default_value;
         }
     } else {
-        name = set_name->clone(use_arena);
+        name = new std::string(set_name);
         data_type = set_data_type->clone(use_arena);
         default_value = set_default_value->clone(use_arena);
     }
@@ -552,7 +646,7 @@ table_detail_object::~table_detail_object() {
     }
 }
 std::string table_detail_object::inspect() const {
-    std::string ret_str = "[Type: Table detail, Name: " + name->inspect() + ", " + data_type->inspect();
+    std::string ret_str = "[Type: Table detail, Name: " + *name + ", " + data_type->inspect();
     ret_str += ", Default value: ";
     if (default_value->type() != NULL_OBJ) {
         ret_str += default_value->inspect(); }
@@ -566,27 +660,20 @@ std::string table_detail_object::data() const {
     return name->data();
 }
 table_detail_object* table_detail_object::clone(bool use_arena) const {
-    return new (use_arena) table_detail_object(name, data_type, default_value, use_arena, true);
+    return new (use_arena) table_detail_object(*name, data_type, default_value, use_arena, true);
 }
 
 // group_object
 group_object::group_object(std::vector<object*> objs, bool use_arena, bool clone) { 
     in_arena = use_arena;
     if (use_arena) {
-        void* mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
-        auto vec_ptr = new (mem) std::vector<object*>();                                  
-        elements = vec_ptr;                                                             
-        arena_inst.register_dtor([vec_ptr]() {                                      
-            vec_ptr->std::vector<object*>::~vector();
-        });
 
-        for (const auto& obj : objs) {
-            if (clone) {
-                elements->push_back(obj->clone(use_arena));
-            } else{
-                elements->push_back(obj);
-            }
+        if (clone) {
+            arena_alloc_std_vector_clone(elements, objs, object*);
+        } else {
+            arena_alloc_std_vector(elements, objs, object*);
         }
+
     } else {
         elements = new std::vector<object*>();  
         for (const auto& obj : objs) {
@@ -734,7 +821,7 @@ evaluated_function_object::evaluated_function_object(function_object* func, std:
             auto vec_ptr = new (mem) std::vector<parameter_object*>();                                  
             parameters   = vec_ptr;                                                             
             arena_inst.register_dtor([vec_ptr]() {                                      
-                vec_ptr->std::vector<parameter_object*>::~vector();                                              \
+                vec_ptr->std::vector<parameter_object*>::~vector();                                              
             });
             for (const auto& param : new_parameters) {
                 parameters->push_back(param);
@@ -975,6 +1062,574 @@ semicolon_object* semicolon_object::clone(bool use_arena) const {
         std::cout << "\\n\nnCLONED WITH ARENA!semicolon_object!!\n\n\n";}
     return new (use_arena) semicolon_object();
 }
+
+// Start Select Object
+std::string star_select_object::inspect() const {
+    return "STAR_SELECT_OBJECT";
+}
+object_type star_select_object::type() const {
+    return STAR_SELECT_OBJECT;
+}
+std::string star_select_object::data() const {
+    return "STAR_SELECT_OBJECT";
+}
+star_select_object* star_select_object::clone(bool use_arena) const {
+    return new (use_arena) star_select_object();
+}
+
+// Column index object
+column_index_object::column_index_object(object* set_table_name, object* set_column_name, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        if (clone) {
+            table_name = set_table_name->clone(use_arena);
+            column_name = set_column_name->clone(use_arena);
+        } else {
+            table_name = set_table_name;
+            column_name = set_column_name;
+        }
+    } else {
+        table_name = set_table_name->clone(use_arena);
+        column_name = set_column_name->clone(use_arena);
+    }
+}
+column_index_object::~column_index_object() {
+    if (!in_arena) {
+        delete table_name;
+        delete column_name;
+    }
+}
+std::string column_index_object::inspect() const {
+    return "[Table name: " + table_name->inspect() + ", Column name: " + column_name->inspect() + "]";
+}
+object_type column_index_object::type() const {
+    return COLUMN_INDEX_OBJECT;
+}
+std::string column_index_object::data() const {
+    return "COLUMN_INDEX_OBJECT";
+}
+column_index_object* column_index_object::clone(bool use_arena) const {
+    return new (use_arena) column_index_object(table_name, column_name, use_arena, true);
+}
+
+
+
+// Table object
+table_object::table_object(std::string set_table_name, std::vector<table_detail_object*> set_column_datas, std::vector<group_object*> set_rows, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        arena_alloc_std_string(table_name, set_table_name);
+
+        if (clone) {
+            arena_alloc_std_vector_clone(column_datas, set_column_datas, table_detail_object*);
+            arena_alloc_std_vector_clone(rows, set_rows, group_object*);
+        } else {
+            arena_alloc_std_vector(column_datas, set_column_datas, table_detail_object*);
+            arena_alloc_std_vector(rows, set_rows, group_object*);
+        }
+
+    } else {
+        table_name = new std::string(set_table_name);
+        column_datas = new std::vector<table_detail_object*>;
+        for (const auto& col_data : set_column_datas) {
+            column_datas->push_back(col_data->clone(use_arena));
+        }
+        rows = new std::vector<group_object*>;
+        for (const auto& roh : set_rows) {
+            rows->push_back(roh->clone(use_arena));
+        }
+    }
+}
+table_object::~table_object() {
+    if (!in_arena) {
+        delete table_name;
+        for (const auto& col_data : *column_datas) {
+            delete col_data;
+        }
+        delete column_datas;
+        for (const auto& roh : *rows) {
+            delete roh;
+        }
+        delete rows;
+    }
+}
+std::string table_object::inspect() const {
+    std::string ret_str = "Table name: " + *table_name  + "\n";
+
+    ret_str += "Column data";
+    for (const auto& col : *column_datas) {
+        ret_str += col->inspect() + ", ";
+    }
+    if (column_datas->size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2);
+    }
+    
+    ret_str += "Rows: \n";
+    for (const auto& roh : *rows) {
+        ret_str += roh->inspect() + "\n";
+    }
+
+    return ret_str;
+}
+object_type table_object::type() const {
+    return TABLE_OBJECT;
+}
+std::string table_object::data() const {
+    return "TABLE_OBJECT";
+}
+table_object* table_object::clone(bool use_arena) const {
+    return new (use_arena) table_object(*table_name, *column_datas, *rows, use_arena, true);
+}
+std::pair<std::string, bool> table_object::get_column_name(size_t index) const{
+    if (index >= column_datas->size()) {
+        return {"Column index out of bounds", false}; }
+    return {*(*column_datas)[index]->name, true};
+}
+std::pair<SQL_data_type_object*, bool> table_object::get_column_data_type(size_t index) const{
+    if (index >= column_datas->size()) {
+        return {new SQL_data_type_object(NULL_TOKEN, NULL_TOKEN, new error_object("Column index out of bounds")), false}; }
+    return {(*column_datas)[index]->data_type, true};
+}
+std::pair<size_t, bool> table_object::get_column_index(const std::string& name) const {
+    for (size_t i = 0; i < column_datas->size(); i++) {
+        std::vector<table_detail_object*> col_datas = *column_datas;
+        if (*(col_datas[i]->name) == name) {
+            return {i, true};
+        }
+    }
+
+    return {0, false};
+}
+std::pair<object*, bool> table_object::get_column_default_value(size_t index) const {
+    if (index >= column_datas->size()) {
+        return {new error_object("Column index out of bounds"), false}; }
+
+    std::vector<table_detail_object*> columns = (*column_datas);
+    return {columns[index]->default_value, true};
+}
+std::pair<object*, bool> table_object::get_cell_value(size_t row_index, size_t col_index) const {
+    if (row_index >= rows->size()) {
+        return {new error_object("Row index out of bounds"), false};}
+
+    if (col_index >= column_datas->size()) {
+        return {new error_object("Column index out of bounds"), false};}
+
+    group_object* roh = (*rows)[row_index];
+    return {(*roh->elements)[col_index], true};
+}
+std::pair<std::vector<object*>, bool> table_object::get_row_vector(size_t index) const {
+    if (index >= rows->size()) {
+        return {{new error_object("Row index out of bounds")}, false};}
+
+    group_object* row = (*rows)[index];
+    return {(*row->elements), true};
+}
+std::vector<size_t> table_object::get_row_ids() const {
+    
+    std::vector<size_t> row_ids;
+    row_ids.reserve(rows->size());
+    for (size_t i = 0; i < rows->size(); i++) {
+        row_ids.push_back(i);
+    }
+
+    return row_ids;
+}
+ bool table_object::check_if_field_name_exists(const std::string& name) const {
+    for (const auto& col_data : *column_datas) {
+        if (*col_data->name == name) {
+            return true; }
+    }
+    return false;
+ }
+
+
+// Table Aggregate Object
+// Not sure I should modify the object or use constructor to create a new one using the old one 
+                                                            // i.e. tabble_aggregate_object(table_aggregate_object* old, table_object* table, bool use_arena, bool clone)...
+table_aggregate_object::table_aggregate_object(bool use_arena) {
+    in_arena = use_arena;
+    if (use_arena) {
+
+        void* mem = arena_inst.allocate(sizeof(std::vector<table_object*>), alignof(std::vector<table_object*>)); 
+        auto vec_ptr = new (mem) std::vector<table_object*>();                                  
+        tables = vec_ptr;                                                             
+        arena_inst.register_dtor([vec_ptr]() {                                      
+            vec_ptr->std::vector<table_object*>::~vector();
+        });
+
+
+    } else {
+        tables = new std::vector<table_object*>;
+    }
+}
+table_aggregate_object::table_aggregate_object(std::vector<table_object*> set_tables, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+
+        if (clone) {
+            arena_alloc_std_vector_clone(tables, set_tables, table_object*);
+        } else {
+            arena_alloc_std_vector(tables, set_tables, table_object*);
+        }
+
+
+    } else {
+        tables = new std::vector<table_object*>;
+        for (const auto& table : set_tables) {
+            tables->push_back(table->clone(use_arena));
+        }
+    }
+}
+table_aggregate_object::~table_aggregate_object() {
+    if (!in_arena) {
+        for (const auto& table : *tables) {
+            delete table;
+        }
+        delete tables;
+    }
+}
+std::string table_aggregate_object::inspect() const {
+    std::string ret_str = "Contained tables:\n";
+
+    for (const auto& table : *tables) {
+        ret_str += *table->table_name = ", "; }
+
+    if (tables->size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2); }
+
+    return ret_str; 
+}
+object_type table_aggregate_object::type() const {
+    return TABLE_AGGREGATE_OBJECT;
+}
+std::string table_aggregate_object::data() const {
+    return "TABLE_AGGREGATE_OBJECT";
+}
+table_aggregate_object* table_aggregate_object::clone(bool use_arena) const {
+    return new (use_arena) table_aggregate_object(*tables, use_arena, true);
+}
+std::pair<size_t, object*> table_aggregate_object::get_col_id(std::string column_name) const {
+
+    bool found_col = false;
+    size_t id = 0;
+    for (const auto& table : *tables) {
+        for (const auto& col_data : *table->column_datas) {
+            if (*col_data->name == column_name) {
+                found_col = true;
+                break;
+            }
+            id++;
+        }
+    }
+
+    if (!found_col) {
+        return {id, new error_object("SELECT FROM: Column index failed to find column (" + column_name + ")")}; 
+    }
+
+    return {id, new null_object()};
+}
+std::pair<size_t, object*> table_aggregate_object::get_col_id(std::string table_name, std::string column_name) const {
+
+    bool found_table = false;
+    bool found_col = false;
+    size_t id = 0;
+    for (const auto& table : *tables) {
+        if (*table->table_name == table_name) {
+            found_table = true;
+            for (const auto& col_data : *table->column_datas) {
+                if (*col_data->name == column_name) {
+                    found_col = true;
+                    break;
+                }
+
+                id += 1;
+            }
+            break;
+        } else if (table->column_datas->size() > 0) {
+            id += table->column_datas->size() - 1;
+        }
+    }
+
+    if (!found_table) {
+        return {id, new error_object("SELECT FROM: Column index failed to find table (" + table_name + ")")}; 
+    }
+
+    if (!found_col) {
+        return {id, new error_object("SELECT FROM: Column index failed to find column (" + column_name + ")")}; 
+    }
+
+    return {id, new null_object()};
+}
+std::vector<size_t> table_aggregate_object::get_all_col_ids() const {
+
+    std::vector<size_t> col_ids;
+    size_t cur_id = 0;
+    for (const auto& table : *tables) {
+
+        col_ids.reserve(table->column_datas->size() + col_ids.capacity());
+        for (size_t i = 0; i < table->column_datas->size(); i++) {
+            col_ids.push_back(cur_id++);
+        }
+    }
+
+    return col_ids;
+}
+std::pair<std::string, bool> table_aggregate_object::get_table_name(size_t index) const {
+    if (index >= tables->size()) {
+        return {"", false}; }
+    return {*(*tables)[index]->table_name, true};
+}
+table_object* table_aggregate_object::combine_tables(const std::string& name) const {
+
+    std::vector<table_detail_object*> column_datas;
+    std::vector<group_object*> rows;
+
+    size_t max_rows = 0;
+    size_t max_cols = 0;
+    for (const auto& table : *tables) {
+
+        if (table->rows->size() > max_rows) {
+            max_rows = table->rows->size(); }
+
+        if (table->column_datas->size() > max_cols) {
+            max_cols = table->column_datas->size(); }
+
+        column_datas.reserve(table->column_datas->size() + column_datas.capacity());
+        for (const auto& col_data : *table->column_datas) {
+            column_datas.push_back(col_data);
+        }
+    }
+
+    rows.reserve(max_rows);
+    for (size_t row_index = 0; row_index < max_rows; row_index++) {
+
+        std::vector<object*> new_row;
+        new_row.reserve(max_cols);
+        for (const auto& table : *tables) {
+            
+            if (row_index >= table->rows->size()) {
+                for (size_t col_index = 0; col_index < table->column_datas->size(); col_index++) {
+                    new_row.emplace_back(new null_object()); 
+                }
+                continue; 
+            }
+            
+            const auto& [row, in_bounds] = table->get_row_vector(row_index);
+            if (!in_bounds) {
+                return new table_object("Weird index bug", {}, {}); }
+
+            std::vector<object*> table_row = row;
+
+            for (size_t col_index = 0; col_index < table_row.size(); col_index++) {
+                new_row.push_back(table_row[col_index]); 
+            }
+
+        }   
+
+        rows.emplace_back(new group_object(new_row));
+    }
+
+    return new table_object(name, column_datas, rows);
+}
+void table_aggregate_object::add_table(table_object* table) {
+    tables->push_back(table);
+}
+
+// Node objects
+// Insert into object
+insert_into_object::insert_into_object(object* set_table_name, std::vector<object*> set_fields, object* set_values, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        if (clone) {
+            table_name = set_table_name->clone(use_arena);
+            values = set_values->clone(use_arena);
+        } else {
+            table_name = set_table_name;
+            values = set_values;
+        }
+
+        void* mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
+        auto vec_ptr = new (mem) std::vector<object*>();                                  
+        fields = vec_ptr;                                                             
+        arena_inst.register_dtor([vec_ptr]() {                                      
+            vec_ptr->std::vector<object*>::~vector();                                              
+        });
+        for (const auto& obj : set_fields) {
+            if (clone) {
+                fields->push_back(obj->clone(use_arena));
+            } else {
+                fields->push_back(obj);
+            }
+        }
+
+    } else {
+        table_name = set_table_name->clone(use_arena);
+        fields = new std::vector<object*>;
+        for (const auto& obj : set_fields) {
+            fields->push_back(obj->clone(use_arena));
+        }
+        values = set_values->clone(use_arena);
+    }
+}
+insert_into_object::~insert_into_object() {
+    if (!in_arena) {
+      delete table_name;
+      for (const auto& field : *fields) {
+        delete field;
+      }
+      delete fields;
+      delete values;
+    }
+}
+std::string insert_into_object::inspect() const {
+    std::string ret_str = "";
+    ret_str += "insert_into: ";
+    ret_str += table_name->inspect() + "\n";
+
+    ret_str += "[Fields: ";
+    for (const auto& field : *fields) {
+        ret_str += field->inspect() + ", "; }
+    if (fields->size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2); }
+
+    ret_str += "], [Values: ";
+    ret_str += values->inspect();
+
+    ret_str += "]\n";
+    return ret_str;
+}
+object_type insert_into_object::type() const {
+    return INSERT_INTO_OBJECT; 
+}
+std::string insert_into_object::data() const {
+    return "INSERT_INTO_OBJECT";
+}
+insert_into_object* insert_into_object::clone(bool use_arena) const {
+    return new (use_arena) insert_into_object(table_name, *fields, values, use_arena, true);
+}
+
+// Select object
+select_object::select_object(object* set_value, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        if (clone) {
+            value = set_value->clone(use_arena);
+        } else {
+            value = set_value;
+        }
+    } else {
+        value = set_value->clone(use_arena);
+    }
+}
+select_object::~select_object() {
+    if (!in_arena) {
+      delete value;
+    }
+}
+std::string select_object::inspect() const {
+    std::string ret_str = "select: " + value->inspect();
+    return ret_str;
+}
+object_type select_object::type() const {
+    return SELECT_OBJECT;
+}
+std::string select_object::data() const {
+    return "SELECT_OBJECT";
+}
+select_object* select_object::clone(bool use_arena) const {
+    return new (use_arena) select_object(value, use_arena, true);
+}
+
+// Select from object
+select_from_object::select_from_object(std::vector<object*> set_column_indexes, std::vector<object*> set_clause_chain, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+
+        void* mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
+        auto vec_ptr = new (mem) std::vector<object*>();                                  
+        column_indexes = vec_ptr;                                                             
+        arena_inst.register_dtor([vec_ptr]() {                                      
+            vec_ptr->std::vector<object*>::~vector();                                              
+        });
+        for (const auto& obj : set_column_indexes) {
+            if (clone) {
+                column_indexes->push_back(obj->clone(use_arena));
+            } else {
+                column_indexes->push_back(obj);
+            }
+        }
+
+        mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
+        auto cond_ptr = new (mem) std::vector<object*>();                                  
+        clause_chain = cond_ptr;                                                             
+        arena_inst.register_dtor([cond_ptr]() {                                      
+            cond_ptr->std::vector<object*>::~vector();                                              
+        });
+        for (const auto& obj : set_clause_chain) {
+            if (clone) {
+                clause_chain->push_back(obj->clone(use_arena));
+            } else {
+                clause_chain->push_back(obj);
+            }
+        }
+
+    } else {
+
+        column_indexes = new std::vector<object*>();
+        for (const auto& col_index : set_column_indexes) {
+            column_indexes->push_back(col_index->clone(use_arena));
+        }
+
+        clause_chain = new std::vector<object*>();
+        for (const auto& clause : set_clause_chain) {
+            clause_chain->push_back(clause->clone(use_arena));
+        }
+    }
+}
+select_from_object::~select_from_object() {
+    if (!in_arena) {
+      for (const auto& col_index : *column_indexes) {
+        delete col_index;
+      }
+      delete column_indexes;
+      for (const auto& cond : *clause_chain) {
+        delete cond;
+      }
+      delete clause_chain;
+    }
+}
+std::string select_from_object::inspect() const {
+    std::string ret_str = "select_from: \n";
+
+    ret_str += "Column indexes: \n";
+    for (const auto& col_index : *column_indexes) {
+        ret_str += col_index->inspect() + ", ";}
+    if (column_indexes->size() > 0) {
+        ret_str = ret_str.substr(0, ret_str.size() - 2); }
+
+
+    if (clause_chain->size() == 1) {
+        ret_str += "Clause: \n";
+    } else if (clause_chain->size() > 1) {
+        ret_str += "Clauses: \n"; }
+    for (const auto& cond : *clause_chain) {
+        ret_str += cond->inspect() + "\n";
+    }
+    
+    ret_str += "\n";
+    return ret_str;
+
+}
+object_type select_from_object::type() const {
+    return SELECT_FROM_OBJECT;
+}
+std::string select_from_object::data() const {
+    return "SELECT_FROM_OBJECT";
+}
+select_from_object* select_from_object::clone(bool use_arena) const {
+    return new (use_arena) select_from_object(*column_indexes, *clause_chain, use_arena, true);
+}
+
 
 
 

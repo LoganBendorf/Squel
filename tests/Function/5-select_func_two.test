@@ -1,0 +1,25 @@
+CREATE OR REPLACE FUNCTION category_func(number DOUBLE)
+  RETURNS VARCHAR
+  AS $$
+  BEGIN
+    IF number < 90 THEN
+      RETURN 'Low';
+    ELSIF number < 110 THEN
+      RETURN 'Medium';
+    ELSE
+      RETURN 'High';
+    END IF;
+  END;
+  $$;
+
+CREATE OR REPLACE FUNCTION returns_20()
+  RETURNS INTEGER
+  AS $$
+  BEGIN
+    RETURN 20;
+  END;
+  $$;
+
+
+
+SELECT category_func(returns_20());

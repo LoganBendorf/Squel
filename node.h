@@ -1,13 +1,14 @@
 #pragma once
 
+#include "pch.h"
+
 #include "structs_and_macros.h"
 #include "object.h"
 
-#include <string>
-#include <vector>
+
 
 enum node_type {
-    NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE,
+    NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE, SELECT_NODE
 };
 
 class node {
@@ -53,7 +54,7 @@ class function : public node {
 class insert_into : public node {
 
     public:
-    insert_into(object* set_table_name, std::vector<object*> set_fields, std::vector<object*> set_values, bool use_arena = true);
+    insert_into(object* set_value, bool use_arena = true, bool clone = false);
     ~insert_into();
 
     std::string inspect() const override;
@@ -61,15 +62,27 @@ class insert_into : public node {
     insert_into* clone(bool use_arena) const override;
 
     public:
-    object* table_name;
-    std::vector<object*>* fields;
-    std::vector<object*>* values;
+    object* value;
+};
+
+class select_node : public node {
+    
+    public:
+    select_node(object* set_value, bool use_arena = true, bool clone = false);
+    ~select_node();
+
+    std::string inspect() const override;
+    node_type type() const override;
+    select_node* clone(bool use_arena) const override;
+
+    public:
+    object* value;
 };
 
 class select_from : public node {
     
     public:
-    select_from(object* set_table_name, std::vector<object*> set_column_names, bool set_asterisk, object* set_condition, bool use_arena = true);
+    select_from(object* set_value, bool use_arena = true, bool clone = false);
     ~select_from();
 
     std::string inspect() const override;
@@ -77,10 +90,7 @@ class select_from : public node {
     select_from* clone(bool use_arena) const override;
 
     public:
-    object* table_name;
-    std::vector<object*>* column_names;
-    bool asterisk;
-    object* condition;
+    object* value;
 };
 
 class alter_table : public node {

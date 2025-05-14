@@ -1,11 +1,10 @@
 
+#include "pch.h"
 
 #include "node.h"
 #include "helpers.h"
 #include "object.h"
 
-#include <string>
-#include <vector>
 #include <sstream>
 
 class arena;
@@ -77,143 +76,89 @@ function* function::clone(bool use_arena) const {
 }
 
 // insert_into_node
-insert_into::insert_into(object* set_table_name, std::vector<object*> set_fields, std::vector<object*> set_values, bool use_arena) {
+insert_into::insert_into(object* set_value, bool use_arena, bool clone) {
     in_arena = use_arena;
     if (use_arena) {
-        table_name = set_table_name;
-
-        void* mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
-        auto vec_ptr = new (mem) std::vector<object*>();                                  
-        fields = vec_ptr;                                                             
-        arena_inst.register_dtor([vec_ptr]() {                                      
-            vec_ptr->std::vector<object*>::~vector();                                              \
-        });
-        for (const auto& obj : set_fields) {
-            fields->push_back(obj);
-        }
-
-        mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
-        vec_ptr = new (mem) std::vector<object*>();                                  
-        values = vec_ptr;                                                             
-        arena_inst.register_dtor([vec_ptr]() {                                      
-            vec_ptr->std::vector<object*>::~vector();                                              \
-        });
-        for (const auto& obj : set_values) {
-            values->push_back(obj);
+        if (clone) {
+            value = set_value->clone(use_arena);
+        } else {
+            value = set_value;
         }
 
     } else {
-        table_name = set_table_name->clone(use_arena);
-        fields = new std::vector<object*>;
-        for (const auto& obj : set_fields) {
-            fields->push_back(obj->clone(use_arena));
-        }
-        values = new std::vector<object*>;
-        for (const auto& obj : set_values) {
-            values->push_back(obj->clone(use_arena));
-        }
+        value = set_value->clone(use_arena);
     }
 }
 insert_into::~insert_into() {
     if (!in_arena) {
-      delete table_name;
-      for (const auto& field : *fields) {
-        delete field;
-      }
-      delete fields;
-      for (const auto& value : *values) {
-        delete value;
-      }
-      delete values;
+      delete value;
     }
 }
 std::string insert_into::inspect() const {
-    std::string ret_str = "";
-    ret_str += "insert_into: ";
-    ret_str += table_name->inspect() + "\n";
-
-    ret_str += "[Fields: ";
-    for (const auto& field : *fields) {
-        ret_str += field->inspect() + ", "; }
-    if (fields->size() > 0) {
-        ret_str = ret_str.substr(0, ret_str.size() - 2); }
-
-    ret_str += "], [Values: ";
-    for (const auto& value : *values) {
-        ret_str  += value->inspect() + ", "; }
-    if (values->size() > 0) {
-        ret_str = ret_str.substr(0, ret_str.size() - 2); }
-
-    ret_str += "]\n";
-    return ret_str;
+    return value->inspect();
 }
 node_type insert_into::type() const {
     return INSERT_INTO_NODE; 
 }
 insert_into* insert_into::clone(bool use_arena) const {
-    return new (use_arena) insert_into(*this);
+    return new (use_arena) insert_into(value, use_arena, true);
 }
 
-// select_from_node
-select_from::select_from(object* set_table_name, std::vector<object*> set_column_names, bool set_asterisk, object* set_condition, bool use_arena) {
+// select_node
+select_node::select_node(object* set_value, bool use_arena, bool clone) {
     in_arena = use_arena;
     if (use_arena) {
-        table_name = set_table_name;
-
-        void* mem = arena_inst.allocate(sizeof(std::vector<object*>), alignof(std::vector<object*>)); 
-        auto vec_ptr = new (mem) std::vector<object*>();                                  
-        column_names = vec_ptr;                                                             
-        arena_inst.register_dtor([vec_ptr]() {                                      
-            vec_ptr->std::vector<object*>::~vector();                                              \
-        });
-        for (const auto& obj : set_column_names) {
-            column_names->push_back(obj);
+        if (clone) {
+            value = set_value->clone(use_arena);
+        } else {
+            value = set_value;
         }
-
-        asterisk = set_asterisk;
-        condition = set_condition;
     } else {
-        table_name = set_table_name->clone(use_arena);
+        value = set_value->clone(use_arena);
+    }
+}
+select_node::~select_node() {
+    if (!in_arena) {
+      delete value;
+    }
+}
+std::string select_node::inspect() const {
+    return value->inspect();
+}
+node_type select_node::type() const {
+    return SELECT_NODE;
+}
+select_node* select_node::clone(bool use_arena) const {
+    return new (use_arena) select_node(value, use_arena, true);
+}
 
-        column_names = new std::vector<object*>();
-        for (const auto& obj : set_column_names) {
-            column_names->push_back(obj->clone(use_arena));
+
+// select_from_node
+select_from::select_from(object* set_value, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        if (clone) {
+            value = set_value->clone(use_arena);
+        } else {
+            value = set_value;
         }
-        
-        asterisk = set_asterisk;
-        condition = set_condition->clone(use_arena);
+    } else {
+        value = set_value->clone(use_arena);
     }
 }
 select_from::~select_from() {
     if (!in_arena) {
-      delete table_name;
-      for (const auto& col_name : *column_names) {
-        delete col_name;
-      }
-      delete column_names;
-      delete condition;
+      delete value;
     }
 }
 std::string select_from::inspect() const {
-    std::string ret_str = "select_from: " + table_name->inspect() + "\n";
-
-    if (condition) {
-        ret_str += "condition: " + condition->inspect() + "\n"; }
-    
-    for (const auto& col_name : *column_names) {
-        ret_str += col_name->inspect() + ", ";}
-    if (column_names->size() > 0) {
-        ret_str = ret_str.substr(0, ret_str.size() - 2); }
-
-    ret_str += "\n";
-    return ret_str;
-
+    return value->inspect();
 }
 node_type select_from::type() const {
     return SELECT_FROM_NODE;
 }
 select_from* select_from::clone(bool use_arena) const {
-    return new (use_arena) select_from(*this);
+    return new (use_arena) select_from(value, use_arena, true);
 }
 
 // alter_table_node

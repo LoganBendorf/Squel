@@ -2,11 +2,11 @@
 
 #include "pch.h"
 
+#include "structs_and_macros.h"
+
 #include <filesystem>
 #include <fstream>
-#include <algorithm>
 
-#include "structs_and_macros.h"
 
 extern std::vector<std::string> errors;
 

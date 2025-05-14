@@ -1,7 +1,6 @@
 
 #include "pch.h"
 
-
 #include "structs_and_macros.h"
 #include "test_reader.h"
 #include "lexer.h"
@@ -9,11 +8,12 @@
 #include "evaluator.h"
 #include "print.h"
 #include "arena.h"
+#include "object.h"
 
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
-static std::vector<table> g_tables;
+static std::vector<table_object*> g_tables;
 static std::vector<evaluated_function_object*> g_functions;
 
 std::string input;
@@ -52,9 +52,7 @@ static auto toggle_show_test_children = [](QLayout* layout) {
 
 static void clear_g_tables() {
     for (const auto& tab : g_tables) {
-        for (const auto& col_data : tab.column_datas) {
-            delete col_data.data_type;
-        }
+        delete tab;
     }
     g_tables.clear();
 }
@@ -238,7 +236,7 @@ int main (int argc, char* argv[]) {
                     input = read_test(test, test_index);
                     current_test_label->setText(QString::fromStdString(input));
 
-                    if (input.length() > 1000) {
+                    if (input.length() > 2000) {
                         std::cout << "INPUT TOO LONG >:(\n";
                         return;}
 
@@ -256,24 +254,19 @@ int main (int argc, char* argv[]) {
                     std::vector<token> tokens = lexer(input);
                     print_tokens(tokens);
 
-                    parser_init(tokens, g_functions);
+                    parser_init(tokens, g_functions, g_tables);
                     std::vector<node*> nodes = parse();
                     print_nodes(nodes);
 
                     environment* env = eval_init(nodes, g_functions, g_tables);
-                    std::pair<std::vector<evaluated_function_object*>, std::vector<table>> funcs_and_tables = eval(env);
+                    const auto& [funcs, tables] = eval(env);
                     clear_g_functions();
-                    for (const auto& new_func : funcs_and_tables.first) {
-                        g_functions.push_back(static_cast<evaluated_function_object*>(new_func->clone(HEAP))); 
+                    for (const auto& new_func : funcs) {
+                        g_functions.push_back(new_func->clone(HEAP)); 
                     }
                     clear_g_tables();
-                    for (const auto& tab : funcs_and_tables.second) {
-                        std::vector<column_data> column_datas;
-                        for (const auto& col_data : tab.column_datas) {
-                            column_datas.push_back({col_data.field_name, col_data.data_type->clone(HEAP), col_data.default_value});
-                        }
-                        table new_tab = {tab.name, column_datas, tab.rows};
-                        g_tables.push_back(new_tab);
+                    for (const auto& tab : tables) {
+                        g_tables.push_back(tab->clone(HEAP));
                     }
 
                     std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";
@@ -326,25 +319,22 @@ int main (int argc, char* argv[]) {
         std::vector<token> tokens = lexer(input);
         print_tokens(tokens);
 
-        parser_init(tokens, g_functions);
+        parser_init(tokens, g_functions, g_tables);
         std::vector<node*> nodes = parse();
         print_nodes(nodes);
 
         environment* env = eval_init(nodes, g_functions, g_tables);
-        std::pair<std::vector<evaluated_function_object*>, std::vector<table>> funcs_and_tables = eval(env);
+        const auto& [funcs, tables] = eval(env);
         clear_g_functions();
-        for (const auto& new_func : funcs_and_tables.first) {
-            g_functions.push_back(static_cast<evaluated_function_object*>(new_func->clone(HEAP))); 
+        for (const auto& new_func : funcs) {
+            g_functions.push_back(new_func->clone(HEAP)); 
         }
         clear_g_tables();
-        for (const auto& tab : funcs_and_tables.second) {
-            std::vector<column_data> column_datas;
-            for (const auto& col_data : tab.column_datas) {
-                column_datas.push_back({col_data.field_name, col_data.data_type->clone(HEAP), col_data.default_value});
-            }
-            table new_tab = {tab.name, column_datas, tab.rows};
-            g_tables.push_back(new_tab);
+        for (const auto& tab : tables) {
+            g_tables.push_back(tab->clone(HEAP));
         }
+
+        std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";
 
         arena_inst.destroy();
 
@@ -408,28 +398,46 @@ static void display_errors(QGridLayout* commands_results_label) {
 static void display_graphical_table(QGridLayout* table_grid) {
     clear_layout(table_grid);  
                         
-    table tab = display_tab.tab;
+    table_info_object* tab_info = display_tab.table_info;
 
-    table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + tab.name)), 0, 0);
+    table_object* tab = tab_info->tab;
 
-    if (display_tab.col_ids.size() == 0) {
+    table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + *tab->table_name)), 0, 0); // err
+
+    if (tab_info->col_ids->size() == 0) {
         return;}
 
     // new begin
     int y = 1;
     int x = 0;
-    for (const auto& col_id : display_tab.col_ids) {
-        table_grid->addWidget(new QLabel(QString::fromStdString(tab.column_datas[col_id].field_name)), y, x);
+    for (const auto& col_id : *tab_info->col_ids) {
+
+        const auto& [col_name, col_in_bounds] = tab->get_column_name(col_id);
+        if (!col_in_bounds) {
+            errors.push_back("display_graphical_table(): Out of bounds column index"); return; }
+
+        table_grid->addWidget(new QLabel(QString::fromStdString(col_name)), y, x);
         x++;
     }
 
     x = 0;
     y = 2;
-    for (const auto& row_index : display_tab.row_ids) {
-        std::vector<std::string> column_values = display_tab.tab.rows[row_index].column_values;
-        for (const auto& col_id : display_tab.col_ids) {
+    for (const auto& row_index : *tab_info->row_ids) {
 
-            table_grid->addWidget(new QLabel(QString::fromStdString(column_values[col_id])), y, x);
+        const auto& [row, row_index_in_bounds] = tab->get_row_vector(row_index);
+        if (!row_index_in_bounds) {
+            errors.push_back("print_table(): Out of bounds row index"); return; }
+        for (const auto& col_id : *tab_info->col_ids) {
+            if (col_id >= row.size()) {
+                errors.push_back("print_table(): Out of bounds column index"); 
+                return;
+            }
+
+            std::string cell_value = row[col_id]->data(); 
+            if (row[col_id]->type() == NULL_OBJ) {
+                cell_value = ""; }
+
+            table_grid->addWidget(new QLabel(QString::fromStdString(cell_value)), y, x);
             x++;
         }
         y++;

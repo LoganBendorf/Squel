@@ -1,10 +1,11 @@
 #pragma once
 
-#include "structs_and_macros.h"
-#include "node.h"
-#include <vector>
+#include "pch.h"
+
+class node;
+struct token;
+struct table;
 
 
-void print_column(table tab, size_t column_index);
 void print_tokens(std::vector<token> tokens);
 void print_nodes(std::vector<node*> nodes);

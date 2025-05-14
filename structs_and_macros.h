@@ -1,8 +1,7 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
+#include "pch.h"
 
 enum heap_or_arena {
     HEAP = false, ARENA = true
@@ -10,27 +9,10 @@ enum heap_or_arena {
 
 class SQL_data_type_object;
 
-typedef struct column_data {
-    std::string field_name;
-    SQL_data_type_object* data_type;
-    std::string default_value;
-} column_data;
-
-typedef struct row {
-    std::vector<std::string> column_values;
-} row;
-
-typedef struct table {
-    std::string name;
-    std::vector<column_data> column_datas;
-    std::vector<row> rows;
-} table;
-
+class table_info_object;
 typedef struct display_table {
     bool to_display;
-    table tab;
-    std::vector<size_t> col_ids;
-    std::vector<size_t> row_ids;
+    table_info_object* table_info;
 } display_table;
 
 struct test {

@@ -1,8 +1,9 @@
 #pragma once
 
+#include "pch.h"
+
 #include "token.h"
 
-#include <string>
 #include <span>
 #include <limits>
 

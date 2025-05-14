@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <functional>
+#include <algorithm>
 
 #include <qt5/QtWidgets/qapplication.h>
 //#include <QApplication>

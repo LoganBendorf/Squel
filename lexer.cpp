@@ -1,9 +1,11 @@
 
 
+#include "pch.h"
+
 #include "token.h"
 #include "helpers.h"
 
-#include <vector>
+
 
 
 extern std::vector<std::string> errors;
@@ -181,6 +183,12 @@ std::vector<token> lexer(std::string input_str) {
             line_position_count++;
         } break;
         case '-': {
+            if (input_position + 1 < input.length()  && input[input_position + 1] == '-') {
+                while (input_position < input.length() && input[input_position] != '\n') {
+                    input_position++;
+                }
+                break;
+            }
             token tok = create_token(MINUS, "-", line_count, line_position_count);
             tokens.push_back(tok);
             input_position++;
@@ -285,9 +293,9 @@ std::vector<token> lexer(std::string input_str) {
             } else {
                 token tok = create_token(ILLEGAL, std::string(1, input[input_position]), line_count, line_position_count);
                 tokens.push_back(tok);
-                std::string err = "Unknown illegal token (" + std::string(1, input[input_position]);
-                err = err + ")";
-                errors.push_back(err);
+                std::string err = "Unknown illegal token ("; // Split up cause stupid warning
+                err += std::string(1, input[input_position]);
+                errors.push_back(err + ")");
                 input_position++;
                 line_position_count++;
             }
