@@ -68,6 +68,41 @@ environment* eval_init(std::vector<node*> nds, std::vector<evaluated_function_ob
     return new environment();
 }
 
+static void configure_print_functions(object* result) {
+
+    if (result->type() != TABLE_INFO_OBJECT) {
+        eval_push_error_return("Failed to evaluate SELECT FROM"); }
+
+    table_info_object* tab_info = static_cast<table_info_object*>(result);
+
+    if (tab_info->tab->type() != TABLE_OBJECT) {
+        eval_push_error_return("SELECT FROM: Failed to evaluate table"); }
+
+    if (tab_info == nullptr) {
+        std::cout << "bruh" << std::endl;
+        exit(10);
+    }
+    if (tab_info->tab == nullptr) {
+        std::cout << "bruh" << std::endl;
+        exit(10);
+    }
+    if (tab_info->col_ids == nullptr) {
+        std::cout << "bruh" << std::endl;
+        exit(10);
+    }
+    if (tab_info->row_ids ==  nullptr) {
+        std::cout << "bruh" << std::endl;
+        exit(10);
+    }
+
+    display_tab.to_display = true;
+    if (display_tab.table_info != nullptr) {
+        delete display_tab.table_info;}
+    display_tab.table_info = tab_info->clone(HEAP);
+
+    print_table(); // CMD line print, QT will do it's own thing in main
+}
+
 std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> eval(environment* env) {
     
     for (const auto& node : nodes) {
@@ -79,34 +114,13 @@ std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> e
                 break;
             case SELECT_NODE: {
                 object* result = eval_select(static_cast<select_node*>(node), env);
-                if (result->type() != TABLE_INFO_OBJECT) {
-                    push_err_break("Failed to evaluate SELECT FROM"); }
-
-                table_info_object* tab_info = static_cast<table_info_object*>(result);
-
-                if (tab_info->tab->type() != TABLE_OBJECT) {
-                    push_err_break("SELECT FROM: Failed to evaluate table"); }
-
-                display_tab.to_display = true;
-                display_tab.table_info = tab_info->clone(HEAP);
-
-                print_table(); // CMD line print, QT will do it's own thing in main
+                configure_print_functions(result);
+                
                 printf("EVAL SELECT CALLED\n");
             } break;
             case SELECT_FROM_NODE: {
                 object* result = eval_select_from(static_cast<select_from*>(node), env);
-                if (result->type() != TABLE_INFO_OBJECT) {
-                    push_err_break("Failed to evaluate SELECT FROM"); }
-
-                table_info_object* tab_info = static_cast<table_info_object*>(result);
-
-                if (tab_info->tab->type() != TABLE_OBJECT) {
-                    push_err_break("SELECT FROM: Failed to evaluate table"); }
-
-                display_tab.to_display = true;
-                display_tab.table_info = tab_info->clone(HEAP);
-
-                print_table(); // CMD line print, QT will do it's own thing in main
+                configure_print_functions(result);
 
                 printf("EVAL SELECT FROM CALLED\n");
             } break;
@@ -776,6 +790,8 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
     return new null_object();
 }
 
+
+// Need to work on INFIX
 static object* eval_left_join(expression_object* clause, table_aggregate_object* table_aggregate, std::vector<size_t> &row_ids, environment* env) {
 
     
@@ -813,9 +829,9 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
     if (equals_obj->op->op_type   != EQUALS_OP) {
         push_err_ret_err_obj("Prefix LEFT JOIN: right of ON is not comparison, (not x = x)"); }
     if (equals_obj->left->type()  != COLUMN_INDEX_OBJECT) {
-        push_err_ret_err_obj("Prefix LEFT JOIN: left of = is not column index object"); }
+        push_err_ret_err_obj("Prefix LEFT JOIN: left of = is not column index object, got (" + equals_obj->left->inspect() + ")"); }
     if (equals_obj->right->type() != COLUMN_INDEX_OBJECT) {
-        push_err_ret_err_obj("Prefix LEFT JOIN: right of = is not column index object"); }
+        push_err_ret_err_obj("Prefix LEFT JOIN: right of = is not column index object, got (" + equals_obj->right->inspect() + ")"); }
 
         
 
@@ -908,7 +924,7 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
     std::vector<group_object*> prim_rows = *primary_table->rows;
     std::vector<group_object*> sec_rows = *secondary_table->rows;
     std::vector<group_object*> new_rows;
-    new_rows.reserve(prim_rows.size() + sec_rows.size());
+    new_rows.reserve(prim_rows.size());
     for (size_t row_index = 0; row_index < prim_rows.size(); row_index++) {
 
         std::vector<object*> prim_row = *prim_rows[row_index]->elements;
@@ -946,6 +962,10 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
         if (should_add) {
             for (const auto& cell : sec_row) {
                 new_row.push_back(cell);
+            } 
+        } else {
+            for (size_t i = 0; i < secondary_table->column_datas->size(); i++) { // padding if there are no more matches
+                new_row.push_back(new null_object());
             }
         }
 

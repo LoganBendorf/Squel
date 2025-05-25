@@ -1,0 +1,20 @@
+CREATE TABLE first (
+    num INT,
+    str VARCHAR(20)
+);
+INSERT INTO first (num, str)
+VALUES (1, first);
+INSERT INTO first (num, str)
+VALUES (2, first);
+
+CREATE TABLE second (
+    num INT,
+    str VARCHAR(20)
+);
+INSERT INTO second (num, str)
+VALUES (1, second);
+INSERT INTO second (num, str)
+VALUES (218, second);
+
+
+SELECT * FROM LEFT JOIN second ON first.num = second.num WHERE first.num = 1;

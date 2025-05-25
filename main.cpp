@@ -16,9 +16,9 @@ std::vector<std::string> warnings;
 static std::vector<table_object*> g_tables;
 static std::vector<evaluated_function_object*> g_functions;
 
-std::string input;
+std::string input = "";
 
-display_table display_tab;
+display_table display_tab = {false, nullptr};
 
 std::vector<struct test> tests;
 
@@ -248,15 +248,18 @@ int main (int argc, char* argv[]) {
                     std::cout << "'" << input << "'\n";
                     std::cout << "DONE ---------------------------\n\n";
                         
-                    std::byte stack_buffer[1 << 15];
-                    arena_inst.init(stack_buffer, 1 << 15);
+                    constexpr size_t size = 1 << 18;
+                    std::byte stack_buffer[size];
+                    arena_inst.init(stack_buffer, size);
+
+                    auto start = std::chrono::high_resolution_clock::now();
 
                     std::vector<token> tokens = lexer(input);
-                    print_tokens(tokens);
+                    // print_tokens(tokens);
 
                     parser_init(tokens, g_functions, g_tables);
                     std::vector<node*> nodes = parse();
-                    print_nodes(nodes);
+                    // print_nodes(nodes);
 
                     environment* env = eval_init(nodes, g_functions, g_tables);
                     const auto& [funcs, tables] = eval(env);
@@ -268,6 +271,10 @@ int main (int argc, char* argv[]) {
                     for (const auto& tab : tables) {
                         g_tables.push_back(tab->clone(HEAP));
                     }
+
+                    auto end = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double> elapsed = end - start;
+                    std::cout << "Elapsed time: " << elapsed.count() * 1000 << " miliseconds\n";
 
                     std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";
 

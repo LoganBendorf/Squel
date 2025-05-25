@@ -58,14 +58,14 @@ static std::string peek_data();
 
 
 enum precedences {
-    LOWEST = 1, PREFIX = 6, HIGHEST = 1000
+    LOWEST = 0, PREFIX = 6, HIGHEST = 1000
 };  
 
 
 
 #define push_error_return(x)                            \
         token cur_tok;                                  \
-        if (token_position >= tokens.size()) {          \
+        if (token_position >= tokens.size()) [[unlikely]] {\
             if (tokens.size() > 0 && token_position >= tokens.size()) { \
                 cur_tok = tokens[tokens.size() - 1];    \
                 cur_tok.position += cur_tok.data.size();\
@@ -81,7 +81,7 @@ enum precedences {
 
 #define push_error_return_empty_string(x)               \
         token cur_tok;                                  \
-        if (token_position >= tokens.size()) {          \
+        if (token_position >= tokens.size()) [[unlikely]]{          \
             if (tokens.size() > 0 && token_position >= tokens.size()) { \
                 cur_tok = tokens[tokens.size() - 1];    \
                 cur_tok.position += cur_tok.data.size();\
@@ -97,7 +97,7 @@ enum precedences {
 
 #define push_error_return_error_object(x)               \
         token cur_tok;                                  \
-        if (token_position >= tokens.size()) {          \
+        if (token_position >= tokens.size()) [[unlikely]]{          \
             if (tokens.size() > 0 && token_position >= tokens.size()) { \
                 cur_tok = tokens[tokens.size() - 1];    \
                 cur_tok.position += cur_tok.data.size();\
@@ -123,21 +123,21 @@ enum precedences {
 #define advance_and_check(x)                \
     prev_token = tokens[token_position];    \
     token_position++;                       \
-    if (token_position >= tokens.size()) {  \
+    if (token_position >= tokens.size()) [[unlikely]]{  \
         push_error_return(x);}              
 
 // sussy using macro in macro
 #define advance_and_check_ret_str(x)        \
     prev_token = tokens[token_position];    \
     token_position++;                       \
-    if (token_position >= tokens.size()) {  \
+    if (token_position >= tokens.size()) [[unlikely]]{  \
         push_error_return_empty_string(x);} 
 
 // sussy using macro in macro
 #define advance_and_check_ret_obj(x)        \
     prev_token = tokens[token_position];    \
     token_position++;                       \
-    if (token_position >= tokens.size()) {  \
+    if (token_position >= tokens.size()) [[unlikely]]{  \
         push_error_return_error_object(x);} 
 
 static bool is_function_name(std::string name) {
@@ -773,6 +773,9 @@ static void parse_create_table() {
 
 size_t numeric_precedence(token tok) {
     switch (tok.type) {
+        case AS:            return 1; break; // !!MAJOR not sure
+        case WHERE:         return 1; break; // !!MAJOR not sure
+        case LEFT:          return 1; break; // !!MAJOR not sure
         case EQUAL:         return 2; break;
         case NOT_EQUAL:     return 2; break;
         case LESS_THAN:     return 3; break;
@@ -781,9 +784,6 @@ size_t numeric_precedence(token tok) {
         case MINUS:         return 4; break;
         case ASTERISK:      return 5; break;
         case SLASH:         return 5; break;
-        case AS:            return 6; break; // !!MAJOR not sure
-        case WHERE:         return 6; break; // !!MAJOR not sure
-        case LEFT:          return 6; break; // !!MAJOR not sure
         case OPEN_PAREN:    return 7; break;
         case OPEN_BRACKET:  return 8; break;
         default:
@@ -1348,9 +1348,11 @@ object* prefix_parse_functions_with_token(token tok) {
 
         advance_and_check_ret_obj("No values after ON");
 
-        object* right_expression = parse_expression(LOWEST);
+        object* right_expression = parse_expression(LOWEST); // SOMETHING SUSSY HERE!!!!!!!!!!!!!!!!!!!!
         if (right_expression->type() != INFIX_EXPRESSION_OBJ) {
-            push_error_return_error_object("LEFT JOIN: Valued to evaluate right expression"); }
+            errors.push_back(right_expression->data());
+            push_error_return_error_object("LEFT JOIN: Failed to parse right expression"); 
+        }
 
         infix_expression_object* inner = new infix_expression_object(new operator_object(ON_OP), left_table_name, right_expression);
 
@@ -1492,7 +1494,7 @@ object* infix_parse_functions_with_obj(object* left) {
             push_error_return_error_object("WHERE: Valued to parse expression"); }
 
 
-        return new infix_expression_object(new operator_object(WHERE_OP), left, expression);
+        return new infix_expression_object(new operator_object(WHERE_OP), left, expression);  // Might have to make prefix
     }
     case LEFT: {
         advance_and_check_ret_obj("No values after LEFT");

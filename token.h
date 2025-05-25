@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string>
+#include "pch.h"
 
 enum token_type {
     ERROR, CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,

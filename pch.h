@@ -6,6 +6,7 @@
 #include <iostream>
 #include <functional>
 #include <algorithm>
+#include <numeric>
 
 #include <qt5/QtWidgets/qapplication.h>
 //#include <QApplication>

@@ -147,8 +147,6 @@ std::string null_object::data() const {
     return std::string("NULL_OBJECT");
 }
 null_object* null_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!null_object!!\n\n\n";}
     return new (use_arena) null_object();
 }
 
@@ -169,8 +167,6 @@ std::string operator_object::data() const {
     return operator_type_to_string(op_type);
 }
 operator_object* operator_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!operator_object!!\n\n\n";}
     return new (use_arena) operator_object(op_type);
 }
 
@@ -202,7 +198,7 @@ table_info_object::table_info_object(table_object* set_tab, std::vector<size_t> 
 }
 table_info_object::~table_info_object() {
     if (!in_arena) {
-        // delete tab; Will be delete automatically I believe
+        delete tab; // Is cloned so it's ok to delete the table
         delete col_ids;
         delete row_ids;
     }
@@ -277,8 +273,6 @@ std::string infix_expression_object::data() const {
     return std::string("INFIX_EXPRESSION_OBJ");
 }
 infix_expression_object* infix_expression_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!infix_expression_object!!\n\n\n";}
     return new (use_arena) infix_expression_object(op, left, right, use_arena, true);
 }
 operator_type infix_expression_object::get_op_type() const {
@@ -319,8 +313,6 @@ std::string prefix_expression_object::data() const {
     return std::string("PREFIX_EXPRESSION_OBJ");
 }
 prefix_expression_object* prefix_expression_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!prefix_expression_object!!\n\n\n";}
     return new (use_arena) prefix_expression_object(op, right, use_arena, true);
 }
 operator_type prefix_expression_object::get_op_type() const {
@@ -347,8 +339,6 @@ std::string integer_object::data() const {
     return std::to_string(value);
 }
 integer_object* integer_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!integer_object!!\n\n\n";}
     return new (use_arena) integer_object(value);
 }
 
@@ -372,8 +362,6 @@ std::string decimal_object::data() const {
     return std::to_string(value);
 }
 decimal_object* decimal_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!decimal_object!!\n\n\n";}
     return new (use_arena) decimal_object(value);
 }
 
@@ -401,8 +389,6 @@ std::string string_object::data() const {
     return *value;
 }
 string_object* string_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!string_object!!\n\n\n";}
     return new (use_arena) string_object(*value, use_arena);
 }
 
@@ -434,8 +420,6 @@ std::string return_value_object::data() const {
     return value->data();
 }
 return_value_object* return_value_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!return_value_object!!\n\n\n";}
     return new (use_arena) return_value_object(value, use_arena, true);
 }
 
@@ -470,8 +454,6 @@ std::string argument_object::data() const {
     return *name;
 }
 argument_object* argument_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!argument_object!!\n\n\n";}
     return new (use_arena) argument_object(*name, value, use_arena, true);
 }
 
@@ -506,8 +488,6 @@ std::string variable_object::data() const {
     return *name;
 }
 variable_object* variable_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!variable_object!!\n\n\n";}
     return new (use_arena) variable_object(*name, value, use_arena, true);
 }
 
@@ -529,8 +509,6 @@ std::string boolean_object::data() const {
     return "FALSE";
 }
 boolean_object* boolean_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!boolean_object!!\n\n\n";}
     return new (use_arena) boolean_object(value);
 }
 
@@ -578,8 +556,6 @@ std::string SQL_data_type_object::data() const {
     return parameter->data();
 }
 SQL_data_type_object* SQL_data_type_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!SQL_data_type_object!!\n\n\n";}
     return new (use_arena) SQL_data_type_object(prefix, data_type, parameter, use_arena, true);
 }
 
@@ -615,8 +591,6 @@ std::string parameter_object::data() const {
     return data_type->data();
 }
 parameter_object* parameter_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!parameter_object!!\n\n\n";}
     return new (use_arena) parameter_object(*name, data_type, use_arena, true);
 }
 
@@ -704,8 +678,6 @@ std::string group_object::data() const {
     return "GROUP_OBJ";
 }
 group_object* group_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!group_object!!\n\n\n";}
     return new (use_arena) group_object(*elements, use_arena, true);
 }
 
@@ -875,8 +847,6 @@ std::string evaluated_function_object::data() const {
     return "EVALUATED_FUNCTION_OBJ";
 }
 evaluated_function_object* evaluated_function_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!evaluated_function_object!!\n\n\n";}
     return new (use_arena) evaluated_function_object(name, parameters, return_type, body, use_arena, true);
 }
 
@@ -914,8 +884,6 @@ std::string function_call_object::data() const {
     return "FUNCTION_CALL_OBJ";
 }
 function_call_object* function_call_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!function_call_object!!\n\n\n";}
     return new (use_arena) function_call_object(*name, arguments, use_arena, true);
 }
 
@@ -1008,8 +976,6 @@ std::string evaluated_column_object::data() const {
     return "EVALUATED_COLUMN_OBJ";
 }
 evaluated_column_object* evaluated_column_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!evaluated_column_object!!\n\n\n";}
     return new (use_arena) evaluated_column_object(*name, data_type, *default_value, use_arena, true);
 }
 
@@ -1058,8 +1024,6 @@ std::string semicolon_object::data() const {
     return "SEMICOLON_OBJ";
 }
 semicolon_object* semicolon_object::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!semicolon_object!!\n\n\n";}
     return new (use_arena) semicolon_object();
 }
 
@@ -1135,8 +1099,8 @@ table_object::table_object(std::string set_table_name, std::vector<table_detail_
             column_datas->push_back(col_data->clone(use_arena));
         }
         rows = new std::vector<group_object*>;
-        for (const auto& roh : set_rows) {
-            rows->push_back(roh->clone(use_arena));
+        for (const auto& row : set_rows) {
+            rows->push_back(row->clone(use_arena));
         }
     }
 }
@@ -1226,12 +1190,8 @@ std::pair<std::vector<object*>, bool> table_object::get_row_vector(size_t index)
 }
 std::vector<size_t> table_object::get_row_ids() const {
     
-    std::vector<size_t> row_ids;
-    row_ids.reserve(rows->size());
-    for (size_t i = 0; i < rows->size(); i++) {
-        row_ids.push_back(i);
-    }
-
+    std::vector<size_t> row_ids(rows->size());
+    std::iota(row_ids.begin(), row_ids.end(), 0);
     return row_ids;
 }
  bool table_object::check_if_field_name_exists(const std::string& name) const {
@@ -1292,7 +1252,7 @@ std::string table_aggregate_object::inspect() const {
     std::string ret_str = "Contained tables:\n";
 
     for (const auto& table : *tables) {
-        ret_str += *table->table_name = ", "; }
+        ret_str += *table->table_name + ", "; }
 
     if (tables->size() > 0) {
         ret_str = ret_str.substr(0, ret_str.size() - 2); }
@@ -1382,7 +1342,6 @@ std::pair<std::string, bool> table_aggregate_object::get_table_name(size_t index
 table_object* table_aggregate_object::combine_tables(const std::string& name) const {
 
     std::vector<table_detail_object*> column_datas;
-    std::vector<group_object*> rows;
 
     size_t max_rows = 0;
     size_t max_cols = 0;
@@ -1400,6 +1359,7 @@ table_object* table_aggregate_object::combine_tables(const std::string& name) co
         }
     }
 
+    std::vector<group_object*> rows;
     rows.reserve(max_rows);
     for (size_t row_index = 0; row_index < max_rows; row_index++) {
 
@@ -1407,6 +1367,7 @@ table_object* table_aggregate_object::combine_tables(const std::string& name) co
         new_row.reserve(max_cols);
         for (const auto& table : *tables) {
             
+            // Fill in empty rows
             if (row_index >= table->rows->size()) {
                 for (size_t col_index = 0; col_index < table->column_datas->size(); col_index++) {
                     new_row.emplace_back(new null_object()); 
@@ -1418,10 +1379,8 @@ table_object* table_aggregate_object::combine_tables(const std::string& name) co
             if (!in_bounds) {
                 return new table_object("Weird index bug", {}, {}); }
 
-            std::vector<object*> table_row = row;
-
-            for (size_t col_index = 0; col_index < table_row.size(); col_index++) {
-                new_row.push_back(table_row[col_index]); 
+            for (size_t col_index = 0; col_index < row.size(); col_index++) {
+                new_row.push_back(row[col_index]); 
             }
 
         }   
@@ -1609,9 +1568,9 @@ std::string select_from_object::inspect() const {
 
 
     if (clause_chain->size() == 1) {
-        ret_str += "Clause: \n";
+        ret_str += "\nClause: \n";
     } else if (clause_chain->size() > 1) {
-        ret_str += "Clauses: \n"; }
+        ret_str += "\nClauses: \n"; }
     for (const auto& cond : *clause_chain) {
         ret_str += cond->inspect() + "\n";
     }
@@ -1680,8 +1639,6 @@ std::string block_statement::data() const {
     return "BLOCK_STATEMENT"; 
 }
 block_statement* block_statement::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!block_statement!!\n\n\n";}
     return new (use_arena) block_statement(*body, use_arena, true);
 }
 
@@ -1731,8 +1688,6 @@ std::string if_statement::data() const {
     return "IF_STATEMENT";
 }
 if_statement* if_statement::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!if_statement!!\n\n\n";}
     return new (use_arena) if_statement(condition, body, other, use_arena, true);
 }
 
@@ -1761,8 +1716,6 @@ std::string end_statement::data() const {
     return "END_STATEMENT"; 
 }
 end_statement* end_statement::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!end_statement!!\n\n\n";}
     return new (use_arena) end_statement();
 }
 
@@ -1796,8 +1749,6 @@ std::string return_statement::data() const {
     return "RETURN_STATEMENT"; 
 }
 return_statement* return_statement::clone(bool use_arena) const {
-    if (use_arena) {
-        std::cout << "\\n\nnCLONED WITH ARENA!return_statement!!\n\n\n";}
     return new (use_arena) return_statement(expression, use_arena, true);
 }
 
