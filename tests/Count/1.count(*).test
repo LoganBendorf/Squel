@@ -1,0 +1,12 @@
+-- This counts rows
+CREATE TABLE count_star_test (
+    num INT
+);
+
+INSERT INTO count_star_test (num)
+VALUES (1);
+
+INSERT INTO count_star_test (num)
+VALUES (2);
+
+SELECT COUNT(*) FROM count_star_test;

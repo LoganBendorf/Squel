@@ -9,17 +9,23 @@
 #include "arena.h"
 #include "structs_and_macros.h" // For table
 
+template<typename T>
+using avec = std::vector<T, MyAllocator<T>>;
 
 
 enum object_type {
-    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, PREFIX_EXPRESSION_OBJ, INTEGER_OBJ, DECIMAL_OBJ, STRING_OBJ, SQL_DATA_TYPE_OBJ,
+    ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, PREFIX_EXPRESSION_OBJ, INTEGER_OBJ, INDEX_OBJ, DECIMAL_OBJ, STRING_OBJ, SQL_DATA_TYPE_OBJ,
     COLUMN_OBJ, EVALUATED_COLUMN_OBJ, FUNCTION_OBJ, OPERATOR_OBJ, SEMICOLON_OBJ, RETURN_VALUE_OBJ, ARGUMENT_OBJ, BOOLEAN_OBJ, FUNCTION_CALL_OBJ,
     GROUP_OBJ, PARAMETER_OBJ, EVALUATED_FUNCTION_OBJ, VARIABLE_OBJ, TABLE_DETAIL_OBJECT, COLUMN_INDEX_OBJECT, TABLE_INFO_OBJECT, TABLE_OBJECT,
-    STAR_SELECT_OBJECT, TABLE_AGGREGATE_OBJECT,
+    STAR_OBJECT, TABLE_AGGREGATE_OBJECT, COLUMN_VALUES_OBJ,
 
     IF_STATEMENT, BLOCK_STATEMENT, END_IF_STATEMENT, END_STATEMENT, RETURN_STATEMENT,
 
     INSERT_INTO_OBJECT, SELECT_OBJECT, SELECT_FROM_OBJECT,
+
+    // CUSTOM
+
+    ASSERT_OBJ,
 };
 
 enum operator_type {
@@ -89,8 +95,8 @@ class table_info_object : public object {
 
     public:
     table_object* tab;
-    std::vector<size_t>* col_ids;
-    std::vector<size_t>* row_ids;
+    avec<size_t> col_ids;
+    avec<size_t> row_ids;
 };
 
 
@@ -160,6 +166,22 @@ class integer_object : public object {
 
     public:
     int value;
+};
+
+class index_object : public object {
+
+    public:
+    index_object();
+    explicit index_object(size_t val);
+    index_object(const std::string& val);
+
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+    index_object* clone(bool use_arena) const override;
+
+    public:
+    size_t value;
 };
 
 class decimal_object : public object {
@@ -258,7 +280,7 @@ class boolean_object : public object {
 class SQL_data_type_object: public object {
 
     public:
-    SQL_data_type_object(token_type set_prefi, token_type set_data_type, object* set_parameter, bool use_arena = true, bool clone = false);
+    SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool use_arena = true, bool clone = false);
     ~SQL_data_type_object();
 
     std::string inspect() const override;
@@ -291,7 +313,7 @@ class parameter_object : public object {
 class table_detail_object : public object {
 
     public:
-    table_detail_object(std::string set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool use_arena = true, bool clone = false);
+    table_detail_object(const std::string& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool use_arena = true, bool clone = false);
     ~table_detail_object();
 
     std::string inspect() const override;
@@ -308,6 +330,7 @@ class table_detail_object : public object {
 class group_object : public object {
 
     public:
+    group_object(object* objs, bool use_arena = true, bool clone = false);
     group_object(std::vector<object*> objs, bool use_arena = true, bool clone = false);
     ~group_object();
 
@@ -317,7 +340,7 @@ class group_object : public object {
     group_object* clone(bool use_arena) const override;
 
     public:
-    std::vector<object*>* elements;
+    avec<object*> elements;
 };
 
 class block_statement;
@@ -393,6 +416,26 @@ class column_object: public object {
     object* default_value;
 };
 
+class values_wrapper_object : public object {
+
+    public:
+    std::vector<object*>* values;
+};
+
+class column_values_object: public values_wrapper_object {
+
+    public:
+    column_values_object(std::vector<object*> set_values, bool use_arena = true, bool clone = false);
+    column_values_object(std::vector<object*>* const& set_values, bool use_arena = true, bool clone = false);
+    ~column_values_object();
+
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+    column_values_object* clone(bool use_arena) const override;
+
+};
+
 class evaluated_column_object: public object {
 
     public:
@@ -435,13 +478,13 @@ class semicolon_object : public object {
     semicolon_object* clone(bool use_arena) const override;
 };
 
-class star_select_object : public object {
+class star_object : public object {
 
     public:
     std::string inspect() const override;
     object_type type() const override;
     std::string data() const override;
-    star_select_object* clone(bool use_arena) const override;
+    star_object* clone(bool use_arena) const override;
 };
 
 class column_index_object : public object {
@@ -461,7 +504,8 @@ class column_index_object : public object {
 
 class table_object : public object {
     public:
-    table_object(std::string set_table_name, std::vector<table_detail_object*> set_column_datas, std::vector<group_object*> set_rows, bool use_arena = true, bool clone = false);
+    table_object(const std::string& set_table_name, table_detail_object* set_column_datas, group_object* set_rows, bool use_arena = true, bool clone = false);
+    table_object(const std::string& set_table_name, std::vector<table_detail_object*> set_column_datas, std::vector<group_object*> set_rows, bool use_arena = true, bool clone = false);
     ~table_object();
 
     std::string inspect() const override;
@@ -470,11 +514,13 @@ class table_object : public object {
     table_object* clone(bool use_arena) const override;
 
     std::pair<std::string, bool> get_column_name(size_t index) const;
+    std::pair<std::vector<object*>*, bool> get_column(size_t index) const;
+    std::pair<std::vector<object*>*, bool> get_column(const std::string& col_name) const;
     std::pair<SQL_data_type_object*, bool> get_column_data_type(size_t index) const;
     std::pair<object*, bool> get_column_default_value(size_t row_index) const;
     std::pair<size_t, bool> get_column_index(const std::string& name) const;
     std::pair<object*, bool> get_cell_value(size_t row_index, size_t col_index) const;
-    std::pair<std::vector<object*>, bool> get_row_vector(size_t index) const;
+    std::pair<const std::vector<object*>&, bool> get_row_vector(size_t index) const;
     std::vector<size_t> get_row_ids() const;
 
     bool check_if_field_name_exists(const std::string& name) const;
@@ -496,9 +542,11 @@ class table_aggregate_object : public object {
     std::string data() const override;
     table_aggregate_object* clone(bool use_arena) const override;
 
-    std::pair<size_t, object*> get_col_id(std::string column_name) const;
-    std::pair<size_t, object*> get_col_id(std::string table_name, std::string column_name) const;
+    std::pair<size_t, object*> get_col_id(const std::string& column_name) const;
+    std::pair<size_t, object*> get_col_id(const std::string& table_name, const std::string& column_name) const;
+    std::pair<size_t, object*> get_col_id(const std::string& table_name, size_t index) const;
     std::vector<size_t> get_all_col_ids() const;
+    std::pair<size_t, bool> get_last_col_id() const;
     std::pair<std::string, bool> get_table_name(size_t index) const;
     table_object* combine_tables(const std::string& name) const;
     void add_table(table_object* table);
@@ -621,4 +669,24 @@ class return_statement : public object {
 
     public:
     object* expression;
+};
+
+
+
+// Custom
+class assert_object : public object {
+
+    public:
+    assert_object(object* , bool ) = delete; // Produces weird error but stops stupid conversions
+    explicit assert_object(object* expr, size_t set_line, bool use_arena = true, bool clone = false);
+    ~assert_object();
+    
+    std::string inspect() const override;
+    object_type type() const override;
+    std::string data() const override;
+    assert_object* clone(bool use_arena) const override;
+
+    public:
+    object* expression;
+    size_t line;
 };

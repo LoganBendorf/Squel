@@ -18,7 +18,7 @@ static std::vector<node*> nodes;
 static std::vector<token> tokens;
 static size_t token_position = 0;
 
-static token prev_token = {ERROR, std::string("garbage"), 0, 0};
+static token prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
 
 static size_t g_loop_count = 0;
 
@@ -32,6 +32,7 @@ struct numeric {
     std::string value;
 };
 
+static object* parse_assert();
 static void parse_alter();
 static object* parse_insert();
 static object* parse_select();
@@ -58,11 +59,11 @@ static std::string peek_data();
 
 
 enum precedences {
-    LOWEST = 0, PREFIX = 6, HIGHEST = 1000
+    LOWEST = 0, SQL_STATEMENT = 1, PREFIX = 6, HIGHEST = 1000
 };  
 
 
-
+// For simple queries, unlikely speedup was 2x. For more complicated ones, speedup was about 4x
 #define push_error_return(x)                            \
         token cur_tok;                                  \
         if (token_position >= tokens.size()) [[unlikely]] {\
@@ -175,7 +176,7 @@ void parser_init(std::vector<token> toks, std::vector<evaluated_function_object*
 
     tokens = toks;
     token_position = 0;
-    prev_token = {ERROR, std::string("garbage"), 0, 0};
+    prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
     g_loop_count = 0;
     function_names.clear();
     table_names.clear();
@@ -209,6 +210,10 @@ std::vector<node*> parse() {
     case SELECT: {
 
         object* result = parse_select();
+
+        if (result->type() == ERROR_OBJ) {
+            errors.emplace_back("parse_select(): Returned error object"); break;
+        }
         // Advance past semicolon
         if (peek_type() != SEMICOLON) {
             errors.emplace_back("parse_select(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
@@ -221,8 +226,6 @@ std::vector<node*> parse() {
             nodes.emplace_back(new select_node(result)); break;
         case SELECT_FROM_OBJECT:
             nodes.emplace_back(new select_from(result)); break;
-        case ERROR_OBJ:
-            errors.emplace_back("parse_select(): Returned error object"); break;
         default:
             errors.emplace_back("parse_select(): Returned unknown object type");
         } 
@@ -230,6 +233,23 @@ std::vector<node*> parse() {
     } break;
     case ALTER:
         parse_alter(); break;
+    // Custom
+    case ASSERT: {
+        object* result = parse_assert();
+
+        if (result->type() != ASSERT_OBJ) {
+            errors.emplace_back("parse_assert(): Returned bad object!"); break; }
+            
+        // Advance past semicolon
+        if (peek_type() != SEMICOLON) {
+            errors.emplace_back("parse_assert(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
+        } else {
+            token_position++;
+        }
+
+
+        nodes.emplace_back(new assert_node(static_cast<assert_object*>(result)));
+    } break;
     default:
         std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = "
         + token_type_to_string(peek().type) + ". Line = " + std::to_string(peek().line) 
@@ -253,6 +273,23 @@ std::vector<node*> parse() {
     }
 
     return nodes;
+}
+
+
+static object* parse_assert() {
+
+    if (peek_type() != ASSERT) {
+        push_error_return_error_object("parse_assert(): with non-VALUES token"); }
+
+    size_t line = peek().line;
+
+    advance_and_check_ret_obj("Nothing after ASSERT");
+
+    object* expr = parse_expression(LOWEST);
+    if (expr->type() == ERROR_OBJ) {
+        push_error_return_error_object("Failed to parse ASSERT expression"); }
+
+    return new assert_object(expr, line);
 }
 
 static void parse_alter() {
@@ -379,7 +416,6 @@ static object* parse_insert() {
     insert_into_object* info = new insert_into_object(table_name, fields, values);
 
     return info;
-
 }
 
 #define advance_and_check_list(x)            \
@@ -543,32 +579,28 @@ static object* parse_select() {
 
     advance_and_check_ret_obj("No tokens after SELECT")
 
-    std::pair<object*, token_type> column_indexes_and_end_type = parse_comma_seperated_list_ADVANCED(std::vector<token_type>{FROM, SEMICOLON});
-    object* column_indexes_obj = column_indexes_and_end_type.first;
-    if (column_indexes_obj->type() != GROUP_OBJ) {
+    const std::vector<token_type> end_types = {FROM, SEMICOLON, CLOSE_PAREN};  //!!MAJOR maybe make global open paren count and return error if count is wrong
+    const auto& [selector_group, end_type] = parse_comma_seperated_list_ADVANCED(end_types);
+    if (selector_group->type() != GROUP_OBJ) {
         push_error_return_error_object("SELECT: Failed to parse SELECT column indexes"); }
 
-    token_type end_type = column_indexes_and_end_type.second;
-    if (end_type != FROM && end_type != SEMICOLON) {
-        push_error_return_error_object("SELECT: Failed to parse SELECT column indexes, strange end type"); }
+    if (auto it = std::ranges::find(end_types, end_type); it == end_types.end()) {
+        push_error_return_error_object("SELECT: Failed to parse SELECT column indexes, strange end type (" + token_type_to_string(end_type) + ")"); }
+    
 
+    std::vector<object*> selectors = *static_cast<group_object*>(selector_group)->elements;
 
-    std::vector<object*> column_indexes = *static_cast<group_object*>(column_indexes_obj)->elements;
-
-    if (column_indexes.size() == 0) {
+    if (selectors.size() == 0) {
         push_error_return_error_object("No values after SELECT");}
     
     if (peek_type() != FROM) {
 
-        if (end_type != SEMICOLON) {
-            push_error_return_error_object("SELECT (column index): Failed to end on semicolon"); }
-
-        if (column_indexes.size() != 1) {
+        if (selectors.size() != 1) {
             push_error_return_error_object("SELECT (column index): Can only take in one value"); }
 
-        object* column_index = column_indexes[0];
+        object* selector = selectors[0];
         
-        select_object* info = new select_object(column_index);
+        select_object* info = new select_object(selector);
 
         return info;
     }
@@ -578,15 +610,15 @@ static object* parse_select() {
 
     advance_and_check_ret_obj("No values after FROM");
 
-    if (column_indexes[0]->data() == "*") {
-        if (column_indexes.size() > 1) {
+    if (selectors[0]->data() == "*") {
+        if (selectors.size() > 1) {
             push_error_return_error_object("Too many entries in list after *");}
-        column_indexes[0] = new star_select_object();
+        selectors[0] = new star_object();
     }
 
     // Get condition chain
     std::vector<object*> clause_chain;
-    while (peek_type() != SEMICOLON && peek_type() != LINE_END) {
+    while (peek_type() != SEMICOLON && peek_type() != LINE_END && peek_type() != CLOSE_PAREN) { //!!MAJOR don't like this close paren check, would prefer to not even have to checks
 
         object* clause = parse_expression(LOWEST);
         if (clause->type() != INFIX_EXPRESSION_OBJ && clause->type() != PREFIX_EXPRESSION_OBJ && clause->type() != STRING_OBJ)  {
@@ -596,7 +628,7 @@ static object* parse_select() {
 
     }
 
-    select_from_object* info = new select_from_object(column_indexes, clause_chain);
+    select_from_object* info = new select_from_object(selectors, clause_chain);
     
     return info;
 
@@ -1261,6 +1293,9 @@ static object* parse_data_type(token tok) {
 object* parse_string_literal(token tok) {
     advance_and_check_ret_obj("No values after string prefix");
 
+    if (tok.data == "*") {
+        return new star_object(); }
+
     bool is_func = is_function_name(tok.data);
     if (is_func) {
         if (peek_type() != OPEN_PAREN) {
@@ -1276,11 +1311,9 @@ object* parse_string_literal(token tok) {
         return new function_call_object(tok.data, static_cast<group_object*>(arguments));
     }
 
-    bool is_table = is_table_name(tok.data);
-    if (is_table) {
-        if (peek_type() != DOT) {
-            return new string_object(tok.data); 
-        }
+    if (peek_type() == DOT) {
+        if (!is_table_name(tok.data)) {
+            push_error_return_error_object("table.column: Table (" + tok.data + ") does not exist"); }
 
         advance_and_check_ret_obj("No values after dot");
 
@@ -1348,7 +1381,7 @@ object* prefix_parse_functions_with_token(token tok) {
 
         advance_and_check_ret_obj("No values after ON");
 
-        object* right_expression = parse_expression(LOWEST); // SOMETHING SUSSY HERE!!!!!!!!!!!!!!!!!!!!
+        object* right_expression = parse_expression(SQL_STATEMENT); // SOMETHING SUSSY HERE!!!!!!!!!!!!!!!!!!!!
         if (right_expression->type() != INFIX_EXPRESSION_OBJ) {
             errors.push_back(right_expression->data());
             push_error_return_error_object("LEFT JOIN: Failed to parse right expression"); 
@@ -1414,7 +1447,7 @@ object* prefix_parse_functions_with_token(token tok) {
         return new integer_object(tok.data); break;
     case STRING_LITERAL:
         return parse_string_literal(tok);
-    case OPEN_PAREN:{
+    case OPEN_PAREN: {
         advance_and_check_ret_obj("No values after open parenthesis in expression");
         object* expression =  parse_expression(LOWEST);
         if (peek_type() != CLOSE_PAREN) {
@@ -1424,7 +1457,7 @@ object* prefix_parse_functions_with_token(token tok) {
     } break;
     case ASTERISK:
         advance_and_check_ret_obj("No values after * prefix");
-        return new string_object(tok.data); break;
+        return new star_object(); break;
     case AS:
         return parse_prefix_as(); break;
     case IF:

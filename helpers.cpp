@@ -23,6 +23,8 @@ std::span<const char* const> token_type_span() {
             "TINYBLOB", "TINYTEXT", "MEDIUMTEXT", "MEDIUMBLOB", "LONGTEXT", "LONGBLOB", "DEC", "DECIMAL", 
             
             "NULL_TOKEN",
+
+            "ASSERT"
     };
     return token_type_to_string;
 }

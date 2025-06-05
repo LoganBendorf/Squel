@@ -24,9 +24,10 @@ static std::vector<evaluated_function_object*> s_functions;
 static void eval_function(function* func, environment* env);
 static object* eval_run_function(function_call_object* func_call, environment* env);
 
+static object* eval_assert(assert_node* node, environment* env);
 static void eval_alter_table(alter_table* info, environment* env);
 static void eval_create_table(const create_table* info, environment* env);
-static object* eval_select (select_node* info, environment* env);
+static object* eval_select (select_object* info, environment* env);
 static object* eval_select_from(select_from* wrapper, environment* env);
 static void print_table();
 static void eval_insert_into(const insert_into* info, environment* env);
@@ -39,6 +40,13 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
 
 static object* can_insert(object* insert_obj, SQL_data_type_object* data_type);
 static std::pair<table_object*, bool> get_table(std::string name);
+
+enum ret_code {
+    SUCCESS, FAIL, ERROR
+};
+static std::pair<object*, ret_code> convert_table_to_value(table_object* tab);
+static std::pair<object*, ret_code> convert_table_info_to_value(table_info_object* info);
+
 
 #define eval_push_error_return(x)     \
         std::string error = x;        \
@@ -113,7 +121,11 @@ std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> e
                 printf("EVAL INSERT INTO CALLED\n");
                 break;
             case SELECT_NODE: {
-                object* result = eval_select(static_cast<select_node*>(node), env);
+                object* unwrapped = static_cast<select_node*>(node)->value;
+                if (unwrapped->type() != SELECT_OBJECT) {
+                    errors.push_back("Select node contained errors object"); break; }
+
+                object* result = eval_select(static_cast<select_object*>(unwrapped), env);
                 configure_print_functions(result);
                 
                 printf("EVAL SELECT CALLED\n");
@@ -136,6 +148,10 @@ std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> e
                 eval_function(static_cast<function*>(node), env);
                 printf("EVAL FUNCTION CALLED\n");
                 break;
+            case ASSERT_NODE:
+                eval_assert(static_cast<assert_node*>(node), env);
+                printf("EVAL FUNCTION CALLED\n");
+                break;
             default:
                 errors.push_back("eval: unknown node type (" + node->inspect() + ")");
         }
@@ -144,24 +160,55 @@ std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> e
     return std::pair(s_functions, s_tables);
 }
 
+static object* eval_assert(assert_node* node, environment* env) {
+
+    assert_object* info = node->value;
+
+    object* expr = eval_expression(info->expression, env);
+    if (expr->type() == ERROR_OBJ) {
+        push_err_ret_err_obj("Failed to evaluate ASSERT expression"); }
+
+    if (expr->type() != BOOLEAN_OBJ) {
+        push_err_ret_err_obj("ASSERT expression failed to evaluate to a boolean"); }
+
+    boolean_object* boolean = static_cast<boolean_object*>(expr);
+
+    if (boolean->data() == "FALSE") {
+        push_err_ret_err_obj("ASSERT failed (Line: " + std::to_string(info->line) + ", Expression: " + info->inspect() + ")"); }
+
+    return new null_object();
+}
+
 static object* assume_data_type(object* obj) {
     switch (obj->type()) {
     case STRING_OBJ:
         return new SQL_data_type_object(NONE, VARCHAR, new integer_object(255));
     case INTEGER_OBJ:
         return new SQL_data_type_object(NONE, INT, new integer_object(11));
+    case TABLE_OBJECT: {
+        const auto& [cell, rc] = convert_table_to_value(static_cast<table_object*>(obj));
+        if (rc == SUCCESS) {
+            return assume_data_type(cell);
+        }
+        push_err_ret_err_obj("Can't assume default data type for (" + obj->inspect() + ")")
+    } break;
+    case TABLE_INFO_OBJECT: {
+        const auto& [cell, rc] = convert_table_info_to_value(static_cast<table_info_object*>(obj));
+        if (rc == SUCCESS) {
+            return assume_data_type(cell);
+        }
+        push_err_ret_err_obj("Can't assume default data type for (" + obj->inspect() + ")")
+    } break;
     default:
         push_err_ret_err_obj("Can't assume default data type for (" + obj->inspect() + ")");
     }
 }
 
-static object* eval_select(select_node* wrapper, environment* env) {
+static object* eval_select(select_object* info, environment* env) {
 
-    if (wrapper->value->type() != SELECT_OBJECT) {
-        push_err_ret_err_obj("eval_select(): Called with invalid object (" + object_type_to_string(wrapper->value->type()) + ")"); }
+    if (info->type() != SELECT_OBJECT) {
+        push_err_ret_err_obj("eval_select(): Called with invalid object (" + object_type_to_string(info->type()) + ")"); }
 
-    select_object* info = static_cast<select_object*>(wrapper->value);
-    
     std::string table_name = info->value->inspect();
    
     object* table_value = eval_expression(info->value, env);
@@ -242,12 +289,250 @@ static object* eval_prefix_expression(operator_object* op, object* right, enviro
     }
 }
 
+
+static bool is_values_wrapper(object* obj) {
+    switch (obj->type()) {
+    case COLUMN_VALUES_OBJ:
+        return true;
+
+    default: 
+        return false;
+    }
+}
+
+static bool is_comparison_operator(operator_object* op) {
+    switch (op->op_type) {
+    case EQUALS_OP: case NOT_EQUALS_OP: case LESS_THAN_OP: case GREATER_THAN_OP:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static object* eval_infix_values_condition(operator_object* op, values_wrapper_object* left_wrapper, values_wrapper_object* right_wrapper, environment* env) {
+    std::vector<object*> left = *left_wrapper->values;
+    std::vector<object*> right = *right_wrapper->values;
+
+    if (left.size() != right.size()) {
+        push_err_ret_err_obj("Cannot compare values of different sizes"); }
+
+    if (is_comparison_operator(op)) {
+        for (size_t i = 0; i < left.size(); i++) {
+            object* obj = eval_infix_expression(op, left[i], right[i], env);
+            if (obj->type() == ERROR_OBJ) {
+                push_err_ret_err_obj(obj->data()); }
+            if (obj->type() != BOOLEAN_OBJ) {
+                push_err_ret_err_obj("compare_values(): Camparison failed to evaluate to boolean"); }
+
+            bool truth = false;
+            if (static_cast<boolean_object*>(obj)->data() == "TRUE") {
+                truth = true; }
+
+            if (truth != true) {
+                return new boolean_object(false); }
+        }
+        return new boolean_object(true);
+    } else {
+        std::vector<object*> new_vec;
+        new_vec.reserve(left.size());
+        for (size_t i = 0; i < left.size(); i++) {
+            object* obj = eval_infix_expression(op, left[i], right[i], env);
+            if (obj->type() == ERROR_OBJ) {
+                push_err_ret_err_obj(obj->data()); }
+
+            new_vec.push_back(obj);
+        }
+        return new group_object(new_vec);
+    }
+}
+
+static object* eval_infix_column_vs_value(operator_object* op, column_index_object* col_index_obj, object* other, bool left_first, environment* env) {
+
+    // Must be comparison operator
+    if (!is_comparison_operator(op)) {
+        push_err_ret_err_obj("Condition with table index on one side and a single value on the other must be a comparison"); }
+
+    object* raw_tab = col_index_obj->table_name;
+    if (raw_tab->type() != TABLE_OBJECT) {
+        push_err_ret_err_obj("eval_infix_column_vs_value(): Column index object contained non-table as table alias, got (" + object_type_to_string(raw_tab->type()) + ")"); }
+    table_object* table = static_cast<table_object*>(raw_tab);
+    
+    object* index_obj = col_index_obj->column_name;
+    if (index_obj->type() != INDEX_OBJ) {
+        push_err_ret_err_obj("eval_infix_column_vs_value(): Column index object contained non-index as column alias, got (" + object_type_to_string(index_obj->type()) + ")"); }
+    size_t index = static_cast<index_object*>(index_obj)->value;
+
+    if (index >= table->rows->size()) {
+        push_err_ret_err_obj("eval_infix_column_vs_value(): Index out-of-bounds"); }
+
+
+
+    if (left_first) {
+        for (size_t i = 0; i < table->rows->size(); i++) {
+
+            const auto& [cell, ok] = table->get_cell_value(i, index);
+            if (!ok) {
+                push_err_ret_err_obj("eval_infix_column_vs_value(): " + cell->data()); }
+
+            object* obj = eval_infix_expression(op, cell, other, env);
+            if (obj->type() == ERROR_OBJ) {
+                push_err_ret_err_obj(obj->data()); }
+            if (obj->type() != BOOLEAN_OBJ) {
+                push_err_ret_err_obj("eval_infix_column_vs_value(): Camparison failed to evaluate to boolean"); }
+
+            bool truth = false;
+            if (static_cast<boolean_object*>(obj)->data() == "TRUE") {
+                truth = true; }
+
+            if (truth != true) {
+                return new boolean_object(false); }
+
+        }
+    } else {
+        for (size_t i = 0; i < table->rows->size(); i++) {
+
+            const auto& [cell, ok] = table->get_cell_value(i, index);
+            if (!ok) {
+                push_err_ret_err_obj("eval_infix_column_vs_value(): " + cell->data()); }
+
+            object* obj = eval_infix_expression(op, other, cell, env);
+            if (obj->type() == ERROR_OBJ) {
+                push_err_ret_err_obj(obj->data()); }
+            if (obj->type() != BOOLEAN_OBJ) {
+                push_err_ret_err_obj("eval_infix_values_condition(): Camparison fail"); }
+
+            bool truth = false;
+            if (static_cast<boolean_object*>(obj)->data() == "TRUE") {
+                truth = true; }
+
+            if (truth != true) {
+                return new boolean_object(false); }
+        }
+    }
+
+    return new boolean_object(true);
+}
+
+static object* eval_infix_values_vs_value(operator_object* op, values_wrapper_object* values, object* other, bool left_first, environment* env) {
+
+    // Must be comparison operator
+    if (!is_comparison_operator(op)) {
+        push_err_ret_err_obj("Condition with multiple values on one side and a single value on the other must be a comparison"); }
+
+
+    if (left_first) {
+        for (const auto& val : *values->values) {
+            object* obj = eval_infix_expression(op, val, other, env);
+            if (obj->type() == ERROR_OBJ) {
+                push_err_ret_err_obj(obj->data()); }
+            if (obj->type() != BOOLEAN_OBJ) {
+                push_err_ret_err_obj("eval_infix_values_condition(): Camparison failed to evaluate to boolean"); }
+
+            bool truth = false;
+            if (static_cast<boolean_object*>(obj)->data() == "TRUE") {
+                truth = true; }
+
+            if (truth != true) {
+                return new boolean_object(false); }
+
+        }
+    } else {
+        for (const auto& val : *values->values) {
+            object* obj = eval_infix_expression(op, other, val, env);
+            if (obj->type() == ERROR_OBJ) {
+                push_err_ret_err_obj(obj->data()); }
+            if (obj->type() != BOOLEAN_OBJ) {
+                push_err_ret_err_obj("eval_infix_values_condition(): Camparison fail"); }
+
+            bool truth = false;
+            if (static_cast<boolean_object*>(obj)->data() == "TRUE") {
+                truth = true; }
+
+            if (truth != true) {
+                return new boolean_object(false); }
+        }
+    }
+
+    return new boolean_object(true);
+}
+
+static std::pair<object*, ret_code> convert_table_info_to_value(table_info_object* info) {
+    if (info->col_ids->size() == 1 && info->row_ids->size() == 1) {
+        const auto& [cell, ok] = info->tab->get_cell_value((*info->col_ids)[0], (*info->row_ids)[0]); 
+        if (!ok) {
+            errors.push_back("convert_table_info_to_value(): weird index bug"); 
+            return {cell, ERROR};
+        }
+        return {cell, SUCCESS};
+    }
+    return {new null_object(), FAIL};
+}
+
+static std::pair<object*, ret_code> convert_table_to_value(table_object* tab) {
+    if (tab->column_datas->size() == 1 && tab->rows->size() == 1) {
+        const auto& [cell, ok] = tab->get_cell_value(0, 0); 
+        if (!ok) {
+            errors.push_back("eval_infix_expression(): Weird index bug"); 
+            return {cell, ERROR};
+        }
+        return {cell, SUCCESS};
+    }
+    return {new null_object(), FAIL};
+}
+
 static object* eval_infix_expression(operator_object* op, object* left, object* right, environment* env) {
 
     object* e_left = eval_expression(left, env);
     object* e_right = eval_expression(right, env);
 
+    if (e_left->type() == ERROR_OBJ) {
+        push_err_ret_err_obj(e_left->data()); }
+    if (e_right->type() == ERROR_OBJ) {
+        push_err_ret_err_obj(e_right->data()); }
 
+    if (is_values_wrapper(e_left) && is_values_wrapper(right)) {
+        return eval_infix_values_condition(op, static_cast<values_wrapper_object*>(e_left), static_cast<values_wrapper_object*>(e_right), env);
+    } else if (is_values_wrapper(e_left)) {
+        return eval_infix_values_vs_value(op, static_cast<values_wrapper_object*>(e_left), e_right, true, env); 
+    } else if (is_values_wrapper(e_right)) {
+        return eval_infix_values_vs_value(op, static_cast<values_wrapper_object*>(e_right), e_left, false, env); 
+    } 
+
+    if (e_left->type() == COLUMN_INDEX_OBJECT) {
+        return eval_infix_column_vs_value(op, static_cast<column_index_object*>(e_left), right, true, env);
+    } else if (e_right->type() == COLUMN_INDEX_OBJECT) {
+        return eval_infix_column_vs_value(op, static_cast<column_index_object*>(e_right), left, false, env);
+    }
+
+    // Functions not dependent on left or right, so can iterate
+    std::array<object*, 2> pair = {e_left, e_right};
+    for (auto& side : pair) {
+        switch (side->type()) {
+
+        case TABLE_OBJECT: { // unused
+        table_object* tab = static_cast<table_object*>(side);
+        const auto& [cell, rc] = convert_table_to_value(tab);
+        if (rc == SUCCESS) {
+            side = cell; 
+        } else if (rc == ERROR) {
+            return cell; }
+        } break;
+
+        case TABLE_INFO_OBJECT: {
+        table_info_object* info = static_cast<table_info_object*>(side);
+        const auto& [cell, rc] = convert_table_info_to_value(info);
+        if (rc == SUCCESS) {
+            side = cell; 
+        } else if (rc == ERROR) {
+            return cell; }
+        } break;
+        default:
+            continue;
+        }
+    }
+
+
+    
     switch (op->op_type) {
         case ADD_OP:
             if (is_numeric_object(e_left) && is_numeric_object(e_right)) {
@@ -326,123 +611,156 @@ static object* eval_expression(object* expression, environment* env) {
 
     switch(expression->type()) {
 
-        // Basic stuff begin
-        case INTEGER_OBJ:
-            return expression; break;
-        case STRING_OBJ:
-            return expression; break;
-        case PARAMETER_OBJ:
-            return expression; break;
-        case RETURN_STATEMENT:
-            return expression; break;
-        case VARIABLE_OBJ:
-            return static_cast<variable_object*>(expression)->value; break;
-        case SQL_DATA_TYPE_OBJ: {
-            SQL_data_type_object* cur = static_cast<SQL_data_type_object*>(expression);
-            object* param = eval_expression(cur->parameter, env);
-            if (param->type() == ERROR_OBJ) {
-                return param; }
+    // Basic stuff begin
+    case STAR_OBJECT:
+        return expression; break;
+    case INTEGER_OBJ:
+        return expression; break;
+    case STRING_OBJ:
+        return expression; break;
+    case PARAMETER_OBJ:
+        return expression; break;
+    case RETURN_STATEMENT:
+        return expression; break;
+    case VARIABLE_OBJ:
+        return static_cast<variable_object*>(expression)->value; break;
+    case SQL_DATA_TYPE_OBJ: {
+        SQL_data_type_object* cur = static_cast<SQL_data_type_object*>(expression);
+        object* param = eval_expression(cur->parameter, env);
+        if (param->type() == ERROR_OBJ) {
+            return param; }
 
-            if (param->type() != INTEGER_OBJ && param->type() != DECIMAL_OBJ && param->type() != NULL_OBJ) {
-                push_err_ret_err_obj("For now parameters of SQL data type must evaluate to integer/decimal/none, can be strings later when working on SET or ENUM"); }
+        if (param->type() != INTEGER_OBJ && param->type() != DECIMAL_OBJ && param->type() != NULL_OBJ) {
+            push_err_ret_err_obj("For now parameters of SQL data type must evaluate to integer/decimal/none, can be strings later when working on SET or ENUM"); }
 
-            cur = new SQL_data_type_object(cur->prefix, cur->data_type, param);
+        cur = new SQL_data_type_object(cur->prefix, cur->data_type, param);
 
-            return cur;
-        } break;
-        case NULL_OBJ:
-            return expression; break;
-        case PREFIX_EXPRESSION_OBJ:
-            return eval_prefix_expression(static_cast<prefix_expression_object*>(expression)->op, static_cast<prefix_expression_object*>(expression)->right, env); break;
-        // Basic stuff end
+        return cur;
+    } break;
+    case NULL_OBJ:
+        return expression; break;
+    case PREFIX_EXPRESSION_OBJ:
+        return eval_prefix_expression(static_cast<prefix_expression_object*>(expression)->op, static_cast<prefix_expression_object*>(expression)->right, env); break;
+    // Basic stuff end
 
-        case SELECT_FROM_OBJECT: {
-            select_from* wrapper = new select_from(static_cast<select_from_object*>(expression));
-            return eval_select_from(wrapper, env);
-        } break;
+    case SELECT_OBJECT: {
+        return eval_select(static_cast<select_object*>(expression), env);
+    }
 
-        case COLUMN_OBJ:
-            return eval_column(static_cast<column_object*>(expression), env);
+    case COLUMN_INDEX_OBJECT: {
+        
+        column_index_object* obj = static_cast<column_index_object*>(expression);
 
-        case FUNCTION_CALL_OBJ:
-            return eval_run_function(static_cast<function_call_object*>(expression), env); break;
+        object* tab_expr = eval_expression(obj->table_name, env);
+        if (tab_expr->type() != STRING_OBJ) {
+            push_err_ret_err_obj("Column index object: Table name failed to evaluate to string"); }
+        std::string table_name = tab_expr->data();
 
-        case GROUP_OBJ: {
-            group_object* group = static_cast<group_object*>(expression);
-            std::vector<object*> objects;
-            for (const auto& obj: *group->elements) {
-                object* evaluated = eval_expression(obj, env);
-                if (evaluated->type() == ERROR_OBJ) {
-                    return evaluated; }
-                objects.push_back(evaluated);
+        object* col_expr = eval_expression(obj->column_name, env);
+        if (col_expr->type() != STRING_OBJ) {
+            push_err_ret_err_obj("Column index object: Column name failed to evaluate to string"); }
+        std::string column_name = col_expr->data();
+
+        const auto& [table, tab_exists] = get_table(table_name);
+        if (!tab_exists) {
+            push_err_ret_err_obj("Column index object: Table does not exist"); }
+
+        const auto& [col_index, col_exists]  = table->get_column_index(column_name);
+        if (!col_exists) {
+            push_err_ret_err_obj("Column index object: Column does not exist"); }
+
+        return new column_index_object(table, new index_object(col_index));
+
+    } break;
+
+    case SELECT_FROM_OBJECT: {
+        select_from* wrapper = new select_from(static_cast<select_from_object*>(expression));
+        return eval_select_from(wrapper, env);
+    } break;
+
+    case COLUMN_OBJ:
+        return eval_column(static_cast<column_object*>(expression), env);
+
+    case FUNCTION_CALL_OBJ:
+        return eval_run_function(static_cast<function_call_object*>(expression), env); break;
+
+    case GROUP_OBJ: {
+        group_object* group = static_cast<group_object*>(expression);
+        std::vector<object*> objects;
+        for (const auto& obj: *group->elements) {
+            object* evaluated = eval_expression(obj, env);
+            if (evaluated->type() == ERROR_OBJ) {
+                return evaluated; }
+            objects.push_back(evaluated);
+        }
+        return new group_object(objects);
+    } break;
+    case BLOCK_STATEMENT: {
+        block_statement* block = static_cast<block_statement*>(expression);
+        object* ret_val = new null_object();
+        for (const auto& statement: *block->body) {
+            ret_val = eval_expression(statement, env);
+        }
+        return ret_val;
+    } break;
+
+    case INFIX_EXPRESSION_OBJ: {
+        infix_expression_object* condition = static_cast<infix_expression_object*>(expression);
+
+        object* left = condition->left;
+
+        if (left->type() == STRING_OBJ) {
+            object* var = env->get_variable(left->data());
+            if (var->type() != ERROR_OBJ) {
+                left = eval_expression(var, env);
             }
-            return new group_object(objects);
-        } break;
-        case BLOCK_STATEMENT: {
-            block_statement* block = static_cast<block_statement*>(expression);
-            object* ret_val = new null_object();
-            for (const auto& statement: *block->body) {
-                ret_val = eval_expression(statement, env);
+        }
+
+        object* right = condition->right;
+
+        if (right->type() == STRING_OBJ) {
+            object* var = env->get_variable(right->data());
+            if (var->type() != ERROR_OBJ) {
+                right = eval_expression(var, env); 
             }
-            return ret_val;
-        } break;
+        }
 
-        case INFIX_EXPRESSION_OBJ: {
-            infix_expression_object* condition = static_cast<infix_expression_object*>(expression);
+        object* result = eval_infix_expression(condition->op, left, right, env);
+        if (result->type() == ERROR_OBJ) {
+            return result; }
 
-            object* left = condition->left;
+        return result;
+    } break;
 
-            if (left->type() == STRING_OBJ) {
-                object* var = env->get_variable(left->data());
-                if (var->type() != ERROR_OBJ) {
-                    left = eval_expression(var, env);
-                }
-            }
+    case IF_STATEMENT: {
+        if_statement* statement = static_cast<if_statement*>(expression);
 
-            object* right = condition->right;
+        object* obj = eval_expression(statement->condition, env); // LOWEST or PREFIX??
+        if (obj->type() == ERROR_OBJ) {
+            return obj; }
 
-            if (right->type() == STRING_OBJ) {
-                object* var = env->get_variable(right->data());
-                if (var->type() != ERROR_OBJ) {
-                    right = eval_expression(var, env); 
-                }
-            }
+        if (obj->type() != BOOLEAN_OBJ) {
+            push_err_ret_err_obj("If statement condition returned non-boolean"); }
 
-            object* result = eval_infix_expression(condition->op, left, right, env);
-            if (result->type() == ERROR_OBJ) {
-                return result; }
+        boolean_object* condition_result = static_cast<boolean_object*>(obj);
 
+        if (condition_result->data() == "TRUE") { // scuffed
+            object* result = eval_expression(statement->body, env);
             return result;
-        } break;
+        } else if (statement->other->type() != NULL_OBJ) {
+            object* result = eval_expression(statement->other, env);
+            return result;
+        }
 
-        case IF_STATEMENT: {
-            if_statement* statement = static_cast<if_statement*>(expression);
-
-            object* obj = eval_expression(statement->condition, env); // LOWEST or PREFIX??
-            if (obj->type() == ERROR_OBJ) {
-                return obj; }
-
-            if (obj->type() != BOOLEAN_OBJ) {
-                push_err_ret_err_obj("If statement condition returned non-boolean"); }
-
-            boolean_object* condition_result = static_cast<boolean_object*>(obj);
-
-            if (condition_result->data() == "TRUE") { // scuffed
-                object* result = eval_expression(statement->body, env);
-                return result;
-            } else if (statement->other->type() != NULL_OBJ) {
-                object* result = eval_expression(statement->other, env);
-                return result;
-            }
-
-            return new null_object();
+        return new null_object();
 
 
-        } break;
-        default:
-            push_err_ret_err_obj("eval_expression(): Cannot evaluate expression. Type (" + object_type_to_string(expression->type()) + "), value(" + expression->inspect() + ")"); }
-
+    } break;
+    default:
+        push_err_ret_err_obj("eval_expression(): Cannot evaluate expression. Type (" + object_type_to_string(expression->type()) + "), value(" + expression->inspect() + ")"); 
+    }
 }
+
 
 std::vector<argument_object*> name_arguments(evaluated_function_object* function, function_call_object* func_call, environment* env) {
 
@@ -472,6 +790,19 @@ std::vector<argument_object*> name_arguments(evaluated_function_object* function
 
 
 static object* eval_run_function(function_call_object* func_call, environment* env) {
+
+    if (*func_call->name == "COUNT") {
+        std::vector<object*> args = *func_call->arguments->elements;
+        std::vector<object*> e_args;
+        e_args.reserve(args.size());
+        for (const auto& arg : args) {
+            object* e_arg = eval_expression(arg, env);
+            if (e_arg->type() == ERROR_OBJ) {
+                push_err_ret_err_obj("Failed to evaluate (" + arg->inspect() + ")"); }
+            e_args.push_back(e_arg);
+        }
+        return new function_call_object("COUNT", new group_object(e_args));
+    }
 
     bool found = false;
     for (const auto& func : s_functions) {
@@ -671,64 +1002,49 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
     if (e_right->type() == ERROR_OBJ) {
         push_err_ret_err_obj("SELECT FROM: Failed to evaluate (" + condition->right->inspect() + ")"); }
 
-    // Find column index BEGIN
+    // Find column index BEGIN  
     size_t where_col_index = SIZE_T_MAX;
-    if (e_left->type() == STRING_OBJ) {
-        const auto&[id, error_val] = table_aggregate->get_col_id(e_left->data());
-        if (error_val->type() != NULL_OBJ) {
-            errors.push_back(error_val->data()); return error_val; }
+    std::array<object*, 2> sides = {e_left, e_right};
+    for (const auto& side : sides) {
+        if (where_col_index != SIZE_T_MAX) {
+            break; }
 
-        where_col_index = id;
-    } else if (e_right->type() == STRING_OBJ) {
-        const auto&[id, error_val] = table_aggregate->get_col_id(e_right->data());
-        if (error_val->type() != NULL_OBJ) {
-            errors.push_back(error_val->data()); return error_val; }
+        switch(side->type()) {
+        case STRING_OBJ: {
+            const auto&[id, error_val] = table_aggregate->get_col_id(side->data());
+            if (error_val->type() != NULL_OBJ) {
+                errors.push_back(error_val->data()); return error_val; }
 
-        where_col_index = id;
-    } else if (e_left->type() == COLUMN_INDEX_OBJECT) {
-        column_index_object* col_index = static_cast<column_index_object*>(e_left);
+            where_col_index = id;
+            
+        } break;
+        case COLUMN_INDEX_OBJECT: {
+            column_index_object* col_index = static_cast<column_index_object*>(e_left);
 
-        object* table_name_obj = col_index->table_name;
-        if (table_name_obj->type() != STRING_OBJ) {
-            push_err_ret_err_obj("WHERE: Column index, table name is not string object, got (" + table_name_obj->inspect() + ")"); }
-        std::string table_name = table_name_obj->data();
+            object* table_alias_obj = col_index->table_name;
+            if (table_alias_obj->type() != TABLE_OBJECT) {
+                push_err_ret_err_obj("WHERE: Column index, table alias is not table object, got (" + table_alias_obj->inspect() + ")"); }
+            table_object* table = static_cast<table_object*>(table_alias_obj);
 
-        object* column_name_obj = col_index->column_name;
-        if (column_name_obj->type() != STRING_OBJ) {
-            push_err_ret_err_obj("WHERE: Column index, column name is not string object, got (" + column_name_obj->inspect() + ")"); }
-        std::string column_name = column_name_obj->data();
-        
-        const auto&[id, error_val] = table_aggregate->get_col_id(e_left->data());
-        if (error_val->type() != NULL_OBJ) {
-            errors.push_back(error_val->data()); return error_val; }
+            object* column_alias_obj = col_index->column_name;
+            if (column_alias_obj->type() != INDEX_OBJ) {
+                push_err_ret_err_obj("WHERE: Column index, column alias is not index object, got (" + column_alias_obj->inspect() + ")"); }
+            index_object* index_obj = static_cast<index_object*>(column_alias_obj);
+            size_t index = index_obj->value;
+            
+            const auto&[id, error_val] = table_aggregate->get_col_id(*table->table_name, index);
+            if (error_val->type() != NULL_OBJ) {
+                push_err_ret_err_obj(error_val->data()); }
 
-        where_col_index = id;
-    } else if (e_right->type() == COLUMN_INDEX_OBJECT) {
-        column_index_object* col_index = static_cast<column_index_object*>(e_right);
-
-        object* table_name_obj = col_index->table_name;
-        if (table_name_obj->type() != STRING_OBJ) {
-            push_err_ret_err_obj("WHERE: Column index, table name is not string object, got (" + table_name_obj->inspect() + ")"); }
-        std::string table_name = table_name_obj->data();
-
-        object* column_name_obj = col_index->column_name;
-        if (column_name_obj->type() != STRING_OBJ) {
-            push_err_ret_err_obj("WHERE: Column index, column name is not string object, got (" + column_name_obj->inspect() + ")"); }
-        std::string column_name = column_name_obj->data();
-        
-        const auto&[id, error_val] = table_aggregate->get_col_id(e_left->data());
-        if (error_val->type() != NULL_OBJ) {
-            errors.push_back(error_val->data()); return error_val; }
-
-        where_col_index = id;
-    } else {
-        push_err_ret_err_obj("SELECT FROM: WHERE condition must contain a column name"); }
+            where_col_index = id;
+        } break;
+        default:
+            break;
+        }
+    }
 
     if (where_col_index == SIZE_T_MAX) {
-        push_err_ret_err_obj("SELECT FROM: Could not find column name in WHERE condition"); }
-    
-    // Find column index END
-
+        push_err_ret_err_obj("SELECT FROM: Could not find column alias in WHERE condition"); }
 
     table_object* table = table_aggregate->combine_tables("Shouldn't be in the end result");
 
@@ -1056,7 +1372,7 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
         push_err_ret_err_obj("SELECT FROM: No column indexes"); }
 
     // If SELECT * FROM [table], add all columns
-    if (column_indexes[0]->type() == STAR_SELECT_OBJECT) {
+    if (column_indexes[0]->type() == STAR_OBJECT) {
         col_ids = table_aggregate->get_all_col_ids();
 
         if (table_aggregate->tables->size() == 1) {
@@ -1073,41 +1389,81 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
 
     for (const auto& col_index_raw : column_indexes) {
 
-        if (col_index_raw->type() == COLUMN_INDEX_OBJECT) {
-            column_index_object* col_index = static_cast<column_index_object*>(col_index_raw);
+        // std::vector<object*> REALARGS = *static_cast<function_call_object*>(col_index_raw)->arguments->elements; for debug
+
+
+        object* selecter = eval_expression(col_index_raw, env);
+        if (selecter->type() == ERROR_OBJ) {
+            push_err_ret_err_obj("SELECT FROM: Could not evalute (" + col_index_raw->inspect() + ")"); }
+
+        switch (selecter->type()) {
+        case FUNCTION_CALL_OBJ: { // Not padding for now cause lazy
+
+            if (column_indexes.size() == 1) {
+                std::vector<size_t> new_row_ids;
+                new_row_ids.push_back(0);
+                row_ids = new_row_ids;
+            }
+
+            std::vector<object*> args = *static_cast<function_call_object*>(selecter)->arguments->elements;
+            if (args.size() != 1) {
+                push_err_ret_err_obj("COUNT() bad argument count"); }
+            object* arg = args[0];
+            if (arg->type() != STAR_OBJECT) {
+                push_err_ret_err_obj("COUNT() argument must be *, got (" + object_type_to_string(arg->type()) + ")"); }
+
+            size_t count = (*table_aggregate->tables)[0]->rows->size(); //!!MAJOR keep track of max size
+            
+            SQL_data_type_object* type = new SQL_data_type_object(NONE, INTEGER, new integer_object(11));
+            group_object* row = new group_object(new integer_object(static_cast<int>(count))); //!!MAJOR stinky
+            table_detail_object* detail = new table_detail_object("COUNT(*)", type, new null_object());
+            table_object* count_star = new table_object("COUNT(*) TABLE", detail, row);
+            table_aggregate->add_table(count_star);
+            const auto& [id, ok] = table_aggregate->get_last_col_id();
+            if (!ok) {
+                push_err_ret_err_obj("SELECT FROM: Weird bug"); }
+            col_ids.push_back(id);
+        } break;
+        case COLUMN_INDEX_OBJECT: {
+            column_index_object* col_index = static_cast<column_index_object*>(selecter);
     
-            object* table_name_obj = col_index->table_name;
-            if (table_name_obj->type() != STRING_OBJ) {
-                push_err_ret_err_obj("SELECT FROM: Column index table name is not string object"); }
-            std::string table_name = table_name_obj->data();
+            object* raw_tab = col_index->table_name;
+            if (raw_tab->type() != TABLE_OBJECT) {
+                push_err_ret_err_obj("SELECT FROM: Column index table alias is not table object"); }
+            std::string table_name = *static_cast<table_object*>(raw_tab)->table_name;
     
-            object* column_name_obj = col_index->column_name;
-            if (column_name_obj->type() != STRING_OBJ) {
-                push_err_ret_err_obj("SELECT FROM: Column index column name is not string object"); }
-            std::string column_name = column_name_obj->data();
+            object* raw_index = col_index->column_name;
+            if (raw_index->type() != INDEX_OBJ) {
+                push_err_ret_err_obj("SELECT FROM: Column index column alias is not index object"); }
+            size_t index = static_cast<index_object*>(raw_index)->value;
     
-            const auto& [id, error_val] = table_aggregate->get_col_id(table_name, column_name);
+            const auto& [id, error_val] = table_aggregate->get_col_id(table_name, index);
             if (error_val->type() != NULL_OBJ) {
-                errors.push_back(error_val->data()); return error_val; }
+                push_err_ret_err_obj("SELECT FROM:" + error_val->data());}
     
             col_ids.push_back(id);
              
-        } else if (col_index_raw->type() == STRING_OBJ) {
+        } break;
+        case STRING_OBJ: {
     
-            std::string column_name = col_index_raw->data();
+            std::string column_name = selecter->data();
     
             const auto& [id, error_val] = table_aggregate->get_col_id(column_name);
             if (error_val->type() != NULL_OBJ) {
                 errors.push_back(error_val->data()); return error_val; }
     
             col_ids.push_back(id);
-        }
+        } break;
 
+        default: 
+            push_err_ret_err_obj("SELECT FROM: Cannot use (" + selecter->inspect() + ") to index");
+
+        }
     }
 
-    if (table_aggregate->tables->size() == 1) {
-        const auto& [table_name, success] = table_aggregate->get_table_name(0);
-        if (!success) {
+    if (table_aggregate->tables->size() == 1 || column_indexes.size() == 1) {
+        const auto& [table_name, ok] = table_aggregate->get_table_name(0);
+        if (!ok) {
             push_err_ret_err_obj("SELECT FROM: Strange bug, couldn't get first table from aggregate, even though size == 1"); }
         table_object* table = table_aggregate->combine_tables(table_name);
         return new table_info_object(table, col_ids, row_ids);

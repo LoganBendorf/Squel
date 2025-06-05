@@ -1,0 +1,12 @@
+CREATE TABLE should_error_test (
+    str VARCHAR,
+    num INT
+);
+
+INSERT INTO should_error_test (str, num)
+VALUES ("first", 1);
+
+INSERT INTO should_error_test (str, num)
+VALUES ("second", 2);
+
+ASSERT should_error_test.num > 5;

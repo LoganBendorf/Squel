@@ -11,7 +11,7 @@ OBJECTS_DIR = build
 # C++ 20
 QMAKE_CXXFLAGS += -std=c++20
 
-# Optimize
+# Optimize. O3 has a bunch of warnings that can't be fixed, so stick with O2. Both are only about 2x faster so not worth the compile time.
 QMAKE_CXXFLAGS += -O0
 
 # Sanitizers

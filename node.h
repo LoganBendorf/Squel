@@ -8,7 +8,10 @@
 
 
 enum node_type {
-    NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE, SELECT_NODE
+    NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE, SELECT_NODE,
+
+    // CUSTOM
+    ASSERT_NODE,
 };
 
 class node {
@@ -121,4 +124,20 @@ class create_table : public node {
     public:
     object* table_name;
     std::vector<table_detail_object*>* details;
+};
+
+
+// CUSTOM
+class assert_node : public node {
+    
+    public:
+    assert_node(assert_object* set_value, bool use_arena = true, bool clone = false);
+    ~assert_node();
+
+    std::string inspect() const override;
+    node_type type() const override;
+    assert_node* clone(bool use_arena) const override;
+
+    public:
+    assert_object* value;
 };

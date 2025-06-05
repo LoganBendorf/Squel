@@ -247,3 +247,33 @@ create_table* create_table::clone(bool use_arena) const {
 }
 
 
+// CUSTOM
+
+
+// assert_node
+assert_node::assert_node(assert_object* set_value, bool use_arena, bool clone) {
+    in_arena = use_arena;
+    if (use_arena) {
+        if (clone) {
+            value = set_value->clone(use_arena);
+        } else {
+            value = set_value;
+        }
+    } else {
+        value = set_value->clone(use_arena);
+    }
+}
+assert_node::~assert_node() {
+    if (!in_arena) {
+      delete value;
+    }
+}
+std::string assert_node::inspect() const {
+    return value->inspect();
+}
+node_type assert_node::type() const {
+    return ASSERT_NODE;
+}
+assert_node* assert_node::clone(bool use_arena) const {
+    return new (use_arena) assert_node(value, use_arena, true);
+}

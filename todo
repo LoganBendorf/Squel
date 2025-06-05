@@ -1,3 +1,5 @@
 fix node and environment memory, make it like object's
 
-double check ALTER works
+add more check for ALTER
+
+reorder table columns for alignment

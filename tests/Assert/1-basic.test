@@ -1,0 +1,12 @@
+CREATE TABLE assert_test (
+    str VARCHAR,
+    num INT
+);
+
+INSERT INTO assert_test (str, num)
+VALUES ("first", 1);
+
+INSERT INTO assert_test (str, num)
+VALUES ("second", 2);
+
+ASSERT assert_test.num < 5;

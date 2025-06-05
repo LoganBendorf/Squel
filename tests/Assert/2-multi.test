@@ -1,0 +1,15 @@
+CREATE TABLE multi_test (
+    str VARCHAR,
+    num INT
+);
+
+INSERT INTO multi_test (str, num)
+VALUES ("first", 1);
+
+INSERT INTO multi_test (str, num)
+VALUES ("second", 2);
+
+ASSERT multi_test.num < 5;
+ASSERT 5 > multi_test.num;
+ASSERT multi_test.num > 0;
+ASSERT 0 < multi_test.num;
