@@ -39,7 +39,7 @@ static object* eval_prefix_expression(operator_object* op, object* right, enviro
 static object* eval_infix_expression(operator_object* op, object* left, object* right, environment* env);
 
 static object* can_insert(object* insert_obj, SQL_data_type_object* data_type);
-static std::pair<table_object*, bool> get_table(std::string name);
+static std::pair<table_object*, bool> get_table(const std_and_astring_variant& name);
 
 enum ret_code {
     SUCCESS, FAIL, ERROR
@@ -48,20 +48,23 @@ static std::pair<object*, ret_code> convert_table_to_value(table_object* tab);
 static std::pair<object*, ret_code> convert_table_info_to_value(table_info_object* info);
 
 
-#define eval_push_error_return(x)     \
-        std::string error = x;        \
-        errors.push_back(error);      \
-        return                        
+#define eval_push_error_return(x)   \
+    std::stringstream error;        \
+    error << x;                     \
+    errors.push_back(error.str());  \
+    return                        
 
-#define push_err_ret_err_obj(x)    \
-    std::string error = x;            \
-    errors.push_back(error);          \
+#define push_err_ret_err_obj(x)     \
+    std::stringstream error;        \
+    error << x;                     \
+    errors.push_back(error.str());  \
     return new error_object();
 
-#define push_err_break(x)             \
-        std::string error = x;        \
-        errors.push_back(error);      \
-        break                         \
+#define push_err_break(x)            \
+    std::stringstream error;        \
+    error << x;                     \
+    errors.push_back(error.str());  \
+    break                           \
 
 environment* eval_init(std::vector<node*> nds, std::vector<evaluated_function_object*> g_functions, std::vector<table_object*> g_tables) {
     nodes = nds;
@@ -86,22 +89,7 @@ static void configure_print_functions(object* result) {
     if (tab_info->tab->type() != TABLE_OBJECT) {
         eval_push_error_return("SELECT FROM: Failed to evaluate table"); }
 
-    if (tab_info == nullptr) {
-        std::cout << "bruh" << std::endl;
-        exit(10);
-    }
-    if (tab_info->tab == nullptr) {
-        std::cout << "bruh" << std::endl;
-        exit(10);
-    }
-    if (tab_info->col_ids == nullptr) {
-        std::cout << "bruh" << std::endl;
-        exit(10);
-    }
-    if (tab_info->row_ids ==  nullptr) {
-        std::cout << "bruh" << std::endl;
-        exit(10);
-    }
+
 
     display_tab.to_display = true;
     if (display_tab.table_info != nullptr) {
@@ -153,7 +141,7 @@ std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> e
                 printf("EVAL FUNCTION CALLED\n");
                 break;
             default:
-                errors.push_back("eval: unknown node type (" + node->inspect() + ")");
+                errors.push_back("eval: unknown node type (" + std::string(node->inspect()) + ")");
         }
     }
 
@@ -174,7 +162,7 @@ static object* eval_assert(assert_node* node, environment* env) {
     boolean_object* boolean = static_cast<boolean_object*>(expr);
 
     if (boolean->data() == "FALSE") {
-        push_err_ret_err_obj("ASSERT failed (Line: " + std::to_string(info->line) + ", Expression: " + info->inspect() + ")"); }
+        push_err_ret_err_obj("ASSERT failed (Line: " << std::to_string(info->line) << ", Expression: " << info->inspect() + ")"); }
 
     return new null_object();
 }
@@ -207,9 +195,9 @@ static object* assume_data_type(object* obj) {
 static object* eval_select(select_object* info, environment* env) {
 
     if (info->type() != SELECT_OBJECT) {
-        push_err_ret_err_obj("eval_select(): Called with invalid object (" + object_type_to_string(info->type()) + ")"); }
+        push_err_ret_err_obj("eval_select(): Called with invalid object (" + object_type_to_astring(info->type()) + ")"); }
 
-    std::string table_name = info->value->inspect();
+    astring table_name = info->value->inspect();
    
     object* table_value = eval_expression(info->value, env);
     if (table_value->type() == ERROR_OBJ) {
@@ -225,7 +213,7 @@ static object* eval_select(select_object* info, environment* env) {
 
     table_object* tab = new table_object(table_name, {detail}, {new group_object({table_value})});
 
-    table_info_object* tab_info = new table_info_object(tab, std::vector<size_t>{0}, std::vector<size_t>{0});
+    table_info_object* tab_info = new table_info_object(tab, avec<size_t>{0}, avec<size_t>{0});
 
     return tab_info;
 }
@@ -236,8 +224,8 @@ static void eval_function (function* func, environment* env) {
     if (eval_parameters->type() != GROUP_OBJ) {
         eval_push_error_return("Failed to evaluate to function parameter"); }
 
-    std::vector<parameter_object*> evaluated_parameters;
-    std::vector<object*> params = *static_cast<group_object*>(eval_parameters)->elements;
+    avec<parameter_object*> evaluated_parameters;
+    avec<object*> params = static_cast<group_object*>(eval_parameters)->elements;
     for (const auto& param : params) {
         if (param->type() == ERROR_OBJ) {
             eval_push_error_return("Failed to evaluate to function parameter"); }
@@ -255,7 +243,7 @@ static void eval_function (function* func, environment* env) {
     // For now just add all functions to global for fun
     bool found = false;
     for (size_t i = 0; i < s_functions.size(); i++) {
-        if (*s_functions[i]->name == *evaluated_func->name) {
+        if (s_functions[i]->name == evaluated_func->name) {
             s_functions[i] = evaluated_func;
             found = true;
             break;
@@ -278,9 +266,9 @@ static object* eval_prefix_expression(operator_object* op, object* right, enviro
     case NEGATE_OP:
         switch (e_right->type()) {
         case INTEGER_OBJ:
-            return new integer_object( - std::stoi(e_right->data()));
+            return new integer_object( - astring_to_numeric<int>(e_right->data()));
         case DECIMAL_OBJ:
-            return new decimal_object( - std::stod(e_right->data()));
+            return new decimal_object( - astring_to_numeric<double>(e_right->data()));
         default:
             push_err_ret_err_obj("No negation operation for type (" + e_right->inspect() + ")");
         }
@@ -310,8 +298,8 @@ static bool is_comparison_operator(operator_object* op) {
 }
 
 static object* eval_infix_values_condition(operator_object* op, values_wrapper_object* left_wrapper, values_wrapper_object* right_wrapper, environment* env) {
-    std::vector<object*> left = *left_wrapper->values;
-    std::vector<object*> right = *right_wrapper->values;
+    avec<object*> left = left_wrapper->values;
+    avec<object*> right = right_wrapper->values;
 
     if (left.size() != right.size()) {
         push_err_ret_err_obj("Cannot compare values of different sizes"); }
@@ -333,7 +321,7 @@ static object* eval_infix_values_condition(operator_object* op, values_wrapper_o
         }
         return new boolean_object(true);
     } else {
-        std::vector<object*> new_vec;
+        avec<object*> new_vec;
         new_vec.reserve(left.size());
         for (size_t i = 0; i < left.size(); i++) {
             object* obj = eval_infix_expression(op, left[i], right[i], env);
@@ -354,21 +342,21 @@ static object* eval_infix_column_vs_value(operator_object* op, column_index_obje
 
     object* raw_tab = col_index_obj->table_name;
     if (raw_tab->type() != TABLE_OBJECT) {
-        push_err_ret_err_obj("eval_infix_column_vs_value(): Column index object contained non-table as table alias, got (" + object_type_to_string(raw_tab->type()) + ")"); }
+        push_err_ret_err_obj("eval_infix_column_vs_value(): Column index object contained non-table as table alias, got (" + object_type_to_astring(raw_tab->type()) + ")"); }
     table_object* table = static_cast<table_object*>(raw_tab);
     
     object* index_obj = col_index_obj->column_name;
     if (index_obj->type() != INDEX_OBJ) {
-        push_err_ret_err_obj("eval_infix_column_vs_value(): Column index object contained non-index as column alias, got (" + object_type_to_string(index_obj->type()) + ")"); }
+        push_err_ret_err_obj("eval_infix_column_vs_value(): Column index object contained non-index as column alias, got (" + object_type_to_astring(index_obj->type()) + ")"); }
     size_t index = static_cast<index_object*>(index_obj)->value;
 
-    if (index >= table->rows->size()) {
+    if (index >= table->rows.size()) {
         push_err_ret_err_obj("eval_infix_column_vs_value(): Index out-of-bounds"); }
 
 
 
     if (left_first) {
-        for (size_t i = 0; i < table->rows->size(); i++) {
+        for (size_t i = 0; i < table->rows.size(); i++) {
 
             const auto& [cell, ok] = table->get_cell_value(i, index);
             if (!ok) {
@@ -389,7 +377,7 @@ static object* eval_infix_column_vs_value(operator_object* op, column_index_obje
 
         }
     } else {
-        for (size_t i = 0; i < table->rows->size(); i++) {
+        for (size_t i = 0; i < table->rows.size(); i++) {
 
             const auto& [cell, ok] = table->get_cell_value(i, index);
             if (!ok) {
@@ -421,7 +409,7 @@ static object* eval_infix_values_vs_value(operator_object* op, values_wrapper_ob
 
 
     if (left_first) {
-        for (const auto& val : *values->values) {
+        for (const auto& val : values->values) {
             object* obj = eval_infix_expression(op, val, other, env);
             if (obj->type() == ERROR_OBJ) {
                 push_err_ret_err_obj(obj->data()); }
@@ -437,7 +425,7 @@ static object* eval_infix_values_vs_value(operator_object* op, values_wrapper_ob
 
         }
     } else {
-        for (const auto& val : *values->values) {
+        for (const auto& val : values->values) {
             object* obj = eval_infix_expression(op, other, val, env);
             if (obj->type() == ERROR_OBJ) {
                 push_err_ret_err_obj(obj->data()); }
@@ -457,8 +445,8 @@ static object* eval_infix_values_vs_value(operator_object* op, values_wrapper_ob
 }
 
 static std::pair<object*, ret_code> convert_table_info_to_value(table_info_object* info) {
-    if (info->col_ids->size() == 1 && info->row_ids->size() == 1) {
-        const auto& [cell, ok] = info->tab->get_cell_value((*info->col_ids)[0], (*info->row_ids)[0]); 
+    if (info->col_ids.size() == 1 && info->row_ids.size() == 1) {
+        const auto& [cell, ok] = info->tab->get_cell_value(info->col_ids[0], info->row_ids[0]); 
         if (!ok) {
             errors.push_back("convert_table_info_to_value(): weird index bug"); 
             return {cell, ERROR};
@@ -469,7 +457,7 @@ static std::pair<object*, ret_code> convert_table_info_to_value(table_info_objec
 }
 
 static std::pair<object*, ret_code> convert_table_to_value(table_object* tab) {
-    if (tab->column_datas->size() == 1 && tab->rows->size() == 1) {
+    if (tab->column_datas.size() == 1 && tab->rows.size() == 1) {
         const auto& [cell, ok] = tab->get_cell_value(0, 0); 
         if (!ok) {
             errors.push_back("eval_infix_expression(): Weird index bug"); 
@@ -542,31 +530,27 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
                 return new string_object(e_left->data() + e_right->data());
             } 
             else {
-                push_err_ret_err_obj("No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect());
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());
             }
             
         case SUB_OP:
             if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);}
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());}
             return new integer_object(static_cast<integer_object*>(e_left)->value - static_cast<integer_object*>(e_right)->value);
             break;
         case MUL_OP:
             if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);}
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());}
             return new integer_object(static_cast<integer_object*>(e_left)->value * static_cast<integer_object*>(e_right)->value);
             break;
         case DIV_OP:
             if (!is_numeric_object(e_left) || !is_numeric_object(e_right)) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);}
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());}
             return new integer_object(static_cast<integer_object*>(e_left)->value / static_cast<integer_object*>(e_right)->value);
             break;
         case DOT_OP:
             if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);}
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());}
             return new decimal_object(e_left->data() + "." + e_right->data());
             break;
         case EQUALS_OP:
@@ -575,8 +559,7 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
             } else if (e_left->type() == INTEGER_OBJ && e_right->type() == INTEGER_OBJ) {
                 return new boolean_object(static_cast<integer_object*>(e_left)->value == static_cast<integer_object*>(e_right)->value); 
             } else {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());
             }
             break;
         case NOT_EQUALS_OP:
@@ -585,20 +568,17 @@ static object* eval_infix_expression(operator_object* op, object* left, object* 
             } else if (e_left->type() == INTEGER_OBJ && e_right->type() == INTEGER_OBJ) {
                 return new boolean_object(static_cast<integer_object*>(e_left)->value != static_cast<integer_object*>(e_right)->value); 
             } else {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());
             }
             break;
         case LESS_THAN_OP:
             if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);}
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());}
             return new boolean_object(static_cast<integer_object*>(e_left)->value < static_cast<integer_object*>(e_right)->value);
             break;
         case GREATER_THAN_OP:
             if (e_left->type() != INTEGER_OBJ || e_left->type() != INTEGER_OBJ) {
-                std::string error_str = "No infix " + op->inspect() + " operation for " + e_left->inspect() + " and " + e_right->inspect();
-                push_err_ret_err_obj(error_str);}
+                push_err_ret_err_obj("No infix " << op->inspect() << " operation for " + e_left->inspect() << " and " << e_right->inspect());}
             return new boolean_object(static_cast<integer_object*>(e_left)->value > static_cast<integer_object*>(e_right)->value);
             break;
         default:
@@ -654,12 +634,12 @@ static object* eval_expression(object* expression, environment* env) {
         object* tab_expr = eval_expression(obj->table_name, env);
         if (tab_expr->type() != STRING_OBJ) {
             push_err_ret_err_obj("Column index object: Table name failed to evaluate to string"); }
-        std::string table_name = tab_expr->data();
+        astring table_name = tab_expr->data();
 
         object* col_expr = eval_expression(obj->column_name, env);
         if (col_expr->type() != STRING_OBJ) {
             push_err_ret_err_obj("Column index object: Column name failed to evaluate to string"); }
-        std::string column_name = col_expr->data();
+        astring column_name = col_expr->data();
 
         const auto& [table, tab_exists] = get_table(table_name);
         if (!tab_exists) {
@@ -686,8 +666,8 @@ static object* eval_expression(object* expression, environment* env) {
 
     case GROUP_OBJ: {
         group_object* group = static_cast<group_object*>(expression);
-        std::vector<object*> objects;
-        for (const auto& obj: *group->elements) {
+        avec<object*> objects;
+        for (const auto& obj: group->elements) {
             object* evaluated = eval_expression(obj, env);
             if (evaluated->type() == ERROR_OBJ) {
                 return evaluated; }
@@ -698,7 +678,7 @@ static object* eval_expression(object* expression, environment* env) {
     case BLOCK_STATEMENT: {
         block_statement* block = static_cast<block_statement*>(expression);
         object* ret_val = new null_object();
-        for (const auto& statement: *block->body) {
+        for (const auto& statement: block->body) {
             ret_val = eval_expression(statement, env);
         }
         return ret_val;
@@ -757,22 +737,22 @@ static object* eval_expression(object* expression, environment* env) {
 
     } break;
     default:
-        push_err_ret_err_obj("eval_expression(): Cannot evaluate expression. Type (" + object_type_to_string(expression->type()) + "), value(" + expression->inspect() + ")"); 
+        push_err_ret_err_obj("eval_expression(): Cannot evaluate expression. Type (" + object_type_to_astring(expression->type()) + "), value(" + expression->inspect() + ")"); 
     }
 }
 
 
-std::vector<argument_object*> name_arguments(evaluated_function_object* function, function_call_object* func_call, environment* env) {
+avec<argument_object*> name_arguments(evaluated_function_object* function, function_call_object* func_call, environment* env) {
 
-    std::vector<argument_object*> named_arguments;
+    avec<argument_object*> named_arguments;
 
     object* eval_args = eval_expression(func_call->arguments, env);
     if (eval_args->type() != GROUP_OBJ) {
         errors.push_back("Failed to evaluate arguments"); return named_arguments; }
 
-    std::vector<object*> evaluated_arguments = *static_cast<group_object*>(eval_args)->elements;
+    avec<object*> evaluated_arguments = static_cast<group_object*>(eval_args)->elements;
 
-    std::vector<parameter_object*> parameters = *function->parameters;
+    avec<parameter_object*> parameters = function->parameters;
 
     if (evaluated_arguments.size() != parameters.size()) {
         errors.push_back("Function called with incorrect number of arguments, got " + std::to_string(evaluated_arguments.size()) + " wanted " + std::to_string(parameters.size()));
@@ -780,7 +760,7 @@ std::vector<argument_object*> name_arguments(evaluated_function_object* function
     }
 
     for (size_t i = 0; i < parameters.size(); i++) {
-        std::string param_name = *static_cast<parameter_object*>(parameters[i])->name;
+        astring param_name = static_cast<parameter_object*>(parameters[i])->name;
         named_arguments.push_back(new argument_object(param_name, evaluated_arguments[i]));
     }
 
@@ -791,9 +771,9 @@ std::vector<argument_object*> name_arguments(evaluated_function_object* function
 
 static object* eval_run_function(function_call_object* func_call, environment* env) {
 
-    if (*func_call->name == "COUNT") {
-        std::vector<object*> args = *func_call->arguments->elements;
-        std::vector<object*> e_args;
+    if (func_call->name == "COUNT") {
+        avec<object*> args = func_call->arguments->elements;
+        avec<object*> e_args;
         e_args.reserve(args.size());
         for (const auto& arg : args) {
             object* e_arg = eval_expression(arg, env);
@@ -806,30 +786,30 @@ static object* eval_run_function(function_call_object* func_call, environment* e
 
     bool found = false;
     for (const auto& func : s_functions) {
-        if (*func->name == *func_call->name) {
+        if (func->name == func_call->name) {
             found = true; 
         }
     }
 
-    if (!found && !env->is_function(*func_call->name)) {
-        push_err_ret_err_obj("Called non-existent function (" + *func_call->name + ")"); }
+    if (!found && !env->is_function(func_call->name)) {
+        push_err_ret_err_obj("Called non-existent function (" + func_call->name + ")"); }
     
 
 
-    object* env_func = env->get_function(*func_call->name);
+    object* env_func = env->get_function(func_call->name);
     if (env_func->type() == ERROR_OBJ) {
-        push_err_ret_err_obj("Function returned as error object (" + *func_call->name + ")"); }
+        push_err_ret_err_obj("Function returned as error object (" + func_call->name + ")"); }
 
     evaluated_function_object* function = static_cast<evaluated_function_object*>(env_func);
 
     size_t error_count = errors.size();
-    std::vector<argument_object*> named_args = name_arguments(function, func_call, env);
+    avec<argument_object*> named_args = name_arguments(function, func_call, env);
     if (error_count < errors.size()) {
         return new error_object(); }
 
 
 
-    std::vector<parameter_object*> parameters = *function->parameters;
+    avec<parameter_object*> parameters = function->parameters;
     if (named_args.size() != parameters.size()) {
         push_err_ret_err_obj("Function called with incorrect number of arguments, got " + std::to_string(named_args.size()) + " wanted " + std::to_string(parameters.size())); }
 
@@ -838,7 +818,7 @@ static object* eval_run_function(function_call_object* func_call, environment* e
     if (!ok) {
         push_err_ret_err_obj("Failed to add function arguments as variables to function environment"); }
 
-    for (const auto& line : *function->body->body) {
+    for (const auto& line : function->body->body) {
         object* res = eval_expression(line, function_env);
         if (res->type() == ERROR_OBJ) {
             return res; }
@@ -870,7 +850,7 @@ static object* eval_column(column_object* col, environment* env) {
     if (default_value->type() == NULL_OBJ) {
         default_value = new string_object(""); }
 
-    return new evaluated_column_object(*static_cast<parameter_object*>(parameter)->name, static_cast<parameter_object*>(parameter)->data_type, default_value->data());
+    return new evaluated_column_object(static_cast<parameter_object*>(parameter)->name, static_cast<parameter_object*>(parameter)->data_type, default_value->data());
 }
 
 static void eval_alter_table(alter_table* info, environment* env) {
@@ -900,13 +880,13 @@ static void eval_alter_table(alter_table* info, environment* env) {
 
         evaluated_column_object* column_obj = static_cast<evaluated_column_object*>(table_edit);
 
-        for (const auto& table_column : *tab->column_datas){
-            if (*column_obj->name == table_column->name->data()) {
-                eval_push_error_return("eval_alter_table(): Table already contains column with name (" + *column_obj->name + ")"); }
+        for (const auto& table_column : tab->column_datas){
+            if (column_obj->name == table_column->name) {
+                eval_push_error_return("eval_alter_table(): Table already contains column with name (" + column_obj->name + ")"); }
         }
 
-        table_detail_object* col = new table_detail_object(*column_obj->name, column_obj->data_type, new string_object(*column_obj->default_value));
-        tab->column_datas->push_back(col);
+        table_detail_object* col = new table_detail_object(column_obj->name, column_obj->data_type, new string_object(column_obj->default_value));
+        tab->column_datas.push_back(col);
     } break;
 
     default:
@@ -927,15 +907,15 @@ static void eval_create_table(const create_table* info, environment* env) {
 
 
     for (const auto& entry : s_tables) {
-        if (*entry->table_name == table_name->data()) {
+        if (entry->table_name == table_name->data()) {
             eval_push_error_return("CREATE TABLE: Table (" + table_name->data() + ") already exists"); }
     }
 
     
 
-    std::vector<table_detail_object*> e_column_datas;
-    for (const auto& detail : *info->details) {
-        std::string name = *detail->name;
+    avec<table_detail_object*> e_column_datas;
+    for (const auto& detail : info->details) {
+        astring name = detail->name;
 
         object* data_type = eval_expression(detail->data_type, env);
         if (data_type->type() == ERROR_OBJ) {
@@ -965,7 +945,7 @@ static void eval_create_table(const create_table* info, environment* env) {
 }
 
 // Reference cause easier, hopefully it works;
-static object* eval_where(expression_object* clause, table_aggregate_object* table_aggregate, std::vector<size_t> &row_ids, environment* env) {
+static object* eval_where(expression_object* clause, table_aggregate_object* table_aggregate, avec<size_t>& row_ids, environment* env) {
     
     if (clause->type() == PREFIX_EXPRESSION_OBJ) {
         push_err_ret_err_obj("Prefix WHERE not supported yet"); }
@@ -1013,7 +993,7 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
         case STRING_OBJ: {
             const auto&[id, error_val] = table_aggregate->get_col_id(side->data());
             if (error_val->type() != NULL_OBJ) {
-                errors.push_back(error_val->data()); return error_val; }
+                errors.push_back(std::string(error_val->data())); return error_val; }
 
             where_col_index = id;
             
@@ -1032,7 +1012,7 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
             index_object* index_obj = static_cast<index_object*>(column_alias_obj);
             size_t index = index_obj->value;
             
-            const auto&[id, error_val] = table_aggregate->get_col_id(*table->table_name, index);
+            const auto&[id, error_val] = table_aggregate->get_col_id(table->table_name, index);
             if (error_val->type() != NULL_OBJ) {
                 push_err_ret_err_obj(error_val->data()); }
 
@@ -1049,14 +1029,14 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
     table_object* table = table_aggregate->combine_tables("Shouldn't be in the end result");
 
 
-    std::vector<size_t> new_row_ids;
-    for (size_t row_id = 0; row_id < table->rows->size(); row_id++) {
+    avec<size_t> new_row_ids;
+    for (size_t row_id = 0; row_id < table->rows.size(); row_id++) {
         
         // Add to env
         const auto& [raw_cell_value, cell_in_bounds] = table->get_cell_value(row_id, where_col_index);
         if (!cell_in_bounds) {
             push_err_ret_err_obj("SELECT FROM: Weird index bug"); }
-        std::string cell_value = raw_cell_value->data();
+        astring cell_value = raw_cell_value->data();
         const auto& [col_data_type, dt_in_bounds] = table->get_column_data_type(where_col_index);
         if (!dt_in_bounds) {
             push_err_ret_err_obj("SELECT FROM: Weird index bug 2"); }
@@ -1065,9 +1045,9 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
         object* value;
         switch (col_type) {
         case INT: case INTEGER:
-            value = new integer_object(std::stoi(cell_value)); break;
+            value = new integer_object(cell_value); break;
         case DECIMAL:
-            value = new decimal_object(std::stod(cell_value)); break;
+            value = new decimal_object(cell_value); break;
         case VARCHAR:
             value = new string_object(cell_value); break;
         default:
@@ -1108,7 +1088,7 @@ static object* eval_where(expression_object* clause, table_aggregate_object* tab
 
 
 // Need to work on INFIX
-static object* eval_left_join(expression_object* clause, table_aggregate_object* table_aggregate, std::vector<size_t> &row_ids, environment* env) {
+static object* eval_left_join(expression_object* clause, table_aggregate_object* table_aggregate, avec<size_t>& row_ids, environment* env) {
 
     
     if (clause->type() == INFIX_EXPRESSION_OBJ) {
@@ -1157,8 +1137,8 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
     if (left->column_name->type() != STRING_OBJ) {
         push_err_ret_err_obj("Prefix LEFT JOIN: left of ='s column index's column name is not a string"); }
     
-    std::string left_table_name  = left->table_name->data();
-    std::string left_column_name = left->column_name->data();
+    astring left_table_name  = left->table_name->data();
+    astring left_column_name = left->column_name->data();
 
 
 
@@ -1168,8 +1148,8 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
     if (right->column_name->type() != STRING_OBJ) {
         push_err_ret_err_obj("Prefix LEFT JOIN: right of ='s column index's column name is not a string"); }
     
-    std::string right_table_name  = right->table_name->data();
-    std::string right_column_name = right->column_name->data();
+    astring right_table_name  = right->table_name->data();
+    astring right_column_name = right->column_name->data();
 
     if (left_table_name == right_table_name) {
         push_err_ret_err_obj("Prefix LEFT JOIN: can not join table with itself"); }
@@ -1186,17 +1166,17 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
 
     
     table_object* primary_table;
-    std::string primary_table_name;
-    std::string primary_column_name;
-    std::string secondary_table_name;
-    std::string secondary_column_name;
-    if (left_table_name == secondary_table->table_name->data()) {
+    astring primary_table_name;
+    astring primary_column_name;
+    astring secondary_table_name;
+    astring secondary_column_name;
+    if (left_table_name == secondary_table->table_name) {
         primary_table         = right_table;
         primary_table_name    = right_table_name;
         primary_column_name   = right_column_name;
         secondary_table_name  = left_table_name;
         secondary_column_name = left_column_name;
-    } else if (right_table_name == secondary_table->table_name->data()) {
+    } else if (right_table_name == secondary_table->table_name) {
         primary_table         = left_table;
         primary_table_name    = left_table_name;
         primary_column_name   = left_column_name;
@@ -1205,7 +1185,7 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
     } else {
         push_err_ret_err_obj("Prefix LEFT JOIN: couldn't assign primary table"); }
 
-    if (secondary_table->table_name->data() != secondary_table_name) {
+    if (secondary_table->table_name != secondary_table_name) {
         push_err_ret_err_obj("Prefix LEFT JOIN: secondary table mismatch, three tables in expression?"); }
     
     if (!primary_table->check_if_field_name_exists(primary_column_name)) {
@@ -1237,18 +1217,18 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
     if (insertable->type() == ERROR_OBJ) {
         push_err_ret_err_obj("Prefix LEFT JOIN: can not insert type (" + sec_data_type->inspect() + ") into (" + prim_data_type->inspect() + ")"); }
 
-    std::vector<group_object*> prim_rows = *primary_table->rows;
-    std::vector<group_object*> sec_rows = *secondary_table->rows;
-    std::vector<group_object*> new_rows;
+    avec<group_object*> prim_rows = primary_table->rows;
+    avec<group_object*> sec_rows = secondary_table->rows;
+    avec<group_object*> new_rows;
     new_rows.reserve(prim_rows.size());
     for (size_t row_index = 0; row_index < prim_rows.size(); row_index++) {
 
-        std::vector<object*> prim_row = *prim_rows[row_index]->elements;
-        std::vector<object*> sec_row;
+        avec<object*> prim_row = prim_rows[row_index]->elements;
+        avec<object*> sec_row;
         if (row_index < sec_rows.size()) {
-            sec_row = *sec_rows[row_index]->elements; }
+            sec_row = sec_rows[row_index]->elements; }
              
-        std::vector<object*> new_row;
+        avec<object*> new_row;
         new_row.reserve(prim_row.size() + sec_row.size());
         for (const auto& cell : prim_row) {
             new_row.push_back(cell); }
@@ -1280,7 +1260,7 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
                 new_row.push_back(cell);
             } 
         } else {
-            for (size_t i = 0; i < secondary_table->column_datas->size(); i++) { // padding if there are no more matches
+            for (size_t i = 0; i < secondary_table->column_datas.size(); i++) { // padding if there are no more matches
                 new_row.push_back(new null_object());
             }
         }
@@ -1288,16 +1268,16 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
         new_rows.push_back(new group_object(new_row));
     }
 
-    std::vector<table_detail_object*> new_column_datas;
-    new_column_datas.reserve(primary_table->column_datas->size() + secondary_table->column_datas->size());
-    for (const auto& col_data : *primary_table->column_datas) {
+    avec<table_detail_object*> new_column_datas;
+    new_column_datas.reserve(primary_table->column_datas.size() + secondary_table->column_datas.size());
+    for (const auto& col_data : primary_table->column_datas) {
         new_column_datas.push_back(col_data); }
-    for (const auto& col_data : *secondary_table->column_datas) {
+    for (const auto& col_data : secondary_table->column_datas) {
         new_column_datas.push_back(col_data); }
 
     
         
-    std::string table_name = primary_table_name + " + " + secondary_table_name;
+    astring table_name = primary_table_name + " + " + secondary_table_name;
 
     table_object* new_table = new table_object(table_name, new_column_datas, new_rows); // !!MAJOR NOT CORRECT, NEED TO APPEND 2 TABLES
     
@@ -1309,7 +1289,7 @@ static object* eval_left_join(expression_object* clause, table_aggregate_object*
 
 // Row ids are passed by reference cause easier, might have to make tab by reference later as well (for stuff like JOINs)
 // If is buggy can just go back to using return values
-static object* eval_clause(expression_object* clause, table_aggregate_object* table_aggregate, std::vector<size_t> &row_ids, environment* env) {
+static object* eval_clause(expression_object* clause, table_aggregate_object* table_aggregate, avec<size_t>& row_ids, environment* env) {
 
     switch (clause->get_op_type()) {
 
@@ -1321,7 +1301,7 @@ static object* eval_clause(expression_object* clause, table_aggregate_object* ta
             return eval_left_join(clause, table_aggregate, row_ids, env);
         } break;
         default:
-            push_err_ret_err_obj("Unsupported op type (" + operator_type_to_string(clause->get_op_type()) + ")");
+            push_err_ret_err_obj("Unsupported op type (" + operator_type_to_astring(clause->get_op_type()) + ")");
     }
     
 
@@ -1330,16 +1310,16 @@ static object* eval_clause(expression_object* clause, table_aggregate_object* ta
 static object* eval_select_from(select_from* wrapper, environment* env) {
 
     if (wrapper->value->type() != SELECT_FROM_OBJECT) {
-        push_err_ret_err_obj("eval_select_from(): Called with invalid object (" + object_type_to_string(wrapper->value->type()) + ")"); }
+        push_err_ret_err_obj("eval_select_from(): Called with invalid object (" + object_type_to_astring(wrapper->value->type()) + ")"); }
 
     select_from_object* info = static_cast<select_from_object*>(wrapper->value);    
     
     // First, use clause chain to obtain the initial table
     // Second, the clause chain will conncect tables together, and narrow the ammount of rows selected
-    std::vector<size_t> row_ids;
+    avec<size_t> row_ids;
     table_aggregate_object* table_aggregate = new table_aggregate_object();
-    if (info->clause_chain->size() != 0) {
-        for (const auto& clause : *info->clause_chain) {
+    if (info->clause_chain.size() != 0) {
+        for (const auto& clause : info->clause_chain) {
 
             if (clause->type() == STRING_OBJ) { // To support plain SELECT * FROM table;
                 const auto& [table, tab_found] = get_table(clause->data());
@@ -1357,7 +1337,7 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
 
             object* error_val = eval_clause(static_cast<expression_object*>(clause), table_aggregate, row_ids, env); // Should add table to aggregate by itself
             if (error_val->type() != NULL_OBJ) {
-                errors.push_back(error_val->data()); return error_val; }
+                errors.push_back(std::string(error_val->data())); return error_val; }
         }
 
     }
@@ -1365,8 +1345,8 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
 
 
     // Second, use column indexes the index into the table aggregate, validate
-    std::vector<object*> column_indexes = *info->column_indexes;
-    std::vector<size_t> col_ids;
+    avec<object*> column_indexes = info->column_indexes;
+    avec<size_t> col_ids;
 
     if (column_indexes.size() == 0) {
         push_err_ret_err_obj("SELECT FROM: No column indexes"); }
@@ -1375,7 +1355,7 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
     if (column_indexes[0]->type() == STAR_OBJECT) {
         col_ids = table_aggregate->get_all_col_ids();
 
-        if (table_aggregate->tables->size() == 1) {
+        if (table_aggregate->tables.size() == 1) {
             const auto& [table_name, success] = table_aggregate->get_table_name(0);
             if (!success) {
                 push_err_ret_err_obj("SELECT FROM: Strange bug, couldn't get first table from aggregate, even though size == 1"); }
@@ -1389,7 +1369,7 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
 
     for (const auto& col_index_raw : column_indexes) {
 
-        // std::vector<object*> REALARGS = *static_cast<function_call_object*>(col_index_raw)->arguments->elements; for debug
+        // avec<object*> REALARGS = *static_cast<function_call_object*>(col_index_raw)->arguments->elements; for debug
 
 
         object* selecter = eval_expression(col_index_raw, env);
@@ -1400,19 +1380,19 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
         case FUNCTION_CALL_OBJ: { // Not padding for now cause lazy
 
             if (column_indexes.size() == 1) {
-                std::vector<size_t> new_row_ids;
+                avec<size_t> new_row_ids;
                 new_row_ids.push_back(0);
                 row_ids = new_row_ids;
             }
 
-            std::vector<object*> args = *static_cast<function_call_object*>(selecter)->arguments->elements;
+            avec<object*> args = static_cast<function_call_object*>(selecter)->arguments->elements;
             if (args.size() != 1) {
                 push_err_ret_err_obj("COUNT() bad argument count"); }
             object* arg = args[0];
             if (arg->type() != STAR_OBJECT) {
-                push_err_ret_err_obj("COUNT() argument must be *, got (" + object_type_to_string(arg->type()) + ")"); }
+                push_err_ret_err_obj("COUNT() argument must be *, got (" + object_type_to_astring(arg->type()) + ")"); }
 
-            size_t count = (*table_aggregate->tables)[0]->rows->size(); //!!MAJOR keep track of max size
+            size_t count = (table_aggregate->tables[0])->rows.size(); //!!MAJOR keep track of max size
             
             SQL_data_type_object* type = new SQL_data_type_object(NONE, INTEGER, new integer_object(11));
             group_object* row = new group_object(new integer_object(static_cast<int>(count))); //!!MAJOR stinky
@@ -1430,7 +1410,7 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
             object* raw_tab = col_index->table_name;
             if (raw_tab->type() != TABLE_OBJECT) {
                 push_err_ret_err_obj("SELECT FROM: Column index table alias is not table object"); }
-            std::string table_name = *static_cast<table_object*>(raw_tab)->table_name;
+            astring table_name = static_cast<table_object*>(raw_tab)->table_name;
     
             object* raw_index = col_index->column_name;
             if (raw_index->type() != INDEX_OBJ) {
@@ -1446,11 +1426,11 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
         } break;
         case STRING_OBJ: {
     
-            std::string column_name = selecter->data();
+            astring column_name = selecter->data();
     
             const auto& [id, error_val] = table_aggregate->get_col_id(column_name);
             if (error_val->type() != NULL_OBJ) {
-                errors.push_back(error_val->data()); return error_val; }
+                errors.push_back(std::string(error_val->data())); return error_val; }
     
             col_ids.push_back(id);
         } break;
@@ -1461,7 +1441,7 @@ static object* eval_select_from(select_from* wrapper, environment* env) {
         }
     }
 
-    if (table_aggregate->tables->size() == 1 || column_indexes.size() == 1) {
+    if (table_aggregate->tables.size() == 1 || column_indexes.size() == 1) {
         const auto& [table_name, ok] = table_aggregate->get_table_name(0);
         if (!ok) {
             push_err_ret_err_obj("SELECT FROM: Strange bug, couldn't get first table from aggregate, even though size == 1"); }
@@ -1479,18 +1459,18 @@ static void print_table() {
 
     table_object* tab = tab_info->tab;
 
-    std::cout << *tab->table_name << ":\n";
+    std::cout << tab->table_name << ":\n";
 
-    std::string field_names = "";
-    for (const auto& col_id : *tab_info->col_ids) {
+    astring field_names = "";
+    for (const auto& col_id : tab_info->col_ids) {
 
         const auto& [full_name, col_in_bounds] = tab->get_column_name(col_id);
         if (!col_in_bounds) {
             eval_push_error_return("print_table(): Out of bounds column index"); }
 
-        std::string name = full_name.substr(0, 10);
+        astring name = full_name.substr(0, 10);
         size_t pad_length = 10 - name.length();
-        std::string pad(pad_length, ' ');
+        astring pad(pad_length, ' ');
         name += pad + " | ";
 
         field_names += name;
@@ -1499,24 +1479,24 @@ static void print_table() {
     std::cout << field_names <<std::endl;
 
     
-    for (const auto& row_index : *tab_info->row_ids) {
+    for (const auto& row_index : tab_info->row_ids) {
 
-        std::string row_values = "";
+        astring row_values = "";
         const auto& [row, row_index_in_bounds] = tab->get_row_vector(row_index);
         if (!row_index_in_bounds) {
             eval_push_error_return("print_table(): Out of bounds row index"); }
-        for (const auto& col_id : *tab_info->col_ids) {
+        for (const auto& col_id : tab_info->col_ids) {
 
             if (col_id >= row.size()) {
                 eval_push_error_return("print_table(): Out of bounds column index"); }  
 
-            std::string full_name = row[col_id]->data();
+            astring full_name = row[col_id]->data();
             if (row[col_id]->type() == NULL_OBJ) {
                 full_name = ""; }
 
-            std::string name = full_name.substr(0, 10);
+            astring name = full_name.substr(0, 10);
             size_t pad_length = 10 - name.length();
-            std::string pad(pad_length, ' ');
+            astring pad(pad_length, ' ');
             name += pad + " | ";
 
             row_values += name;
@@ -1527,9 +1507,15 @@ static void print_table() {
     std::cout << std::endl;
 }
 
-static std::pair<table_object*, bool> get_table(std::string name) {
+static std::pair<table_object*, bool> get_table(const std_and_astring_variant& name) {
+
+    astring name_unwrapped;
+    VISIT(name, unwrapped,
+        name_unwrapped = unwrapped;
+    );
+
     for (auto& entry : s_tables) {
-        if (*entry->table_name == name) {
+        if (entry->table_name == name_unwrapped) {
             return {entry, true};
         }
     }
@@ -1537,10 +1523,11 @@ static std::pair<table_object*, bool> get_table(std::string name) {
     return {nullptr, false};
 }
 
+
 static void eval_insert_into(const insert_into* wrapper, environment* env) {
 
     if (wrapper->value->type() != INSERT_INTO_OBJECT) {
-        eval_push_error_return("eval_insert_into(): Called with invalid object (" + object_type_to_string(wrapper->value->type()) + ")"); }
+        eval_push_error_return("eval_insert_into(): Called with invalid object (" + object_type_to_astring(wrapper->value->type()) + ")"); }
 
     insert_into_object* info = static_cast<insert_into_object*>(wrapper->value);
 
@@ -1563,24 +1550,24 @@ static void eval_insert_into(const insert_into* wrapper, environment* env) {
     if (values_obj->type() != GROUP_OBJ) { // or != TABLE_OBJ???
         eval_push_error_return("INSERT INTO, failed to evaluate values");}
 
-    std::vector<object*> values = *static_cast<group_object*>(values_obj)->elements;
+    avec<object*> values = static_cast<group_object*>(values_obj)->elements;
         
     if (values.size() == 0) {
         eval_push_error_return("INSERT INTO, no values");}
 
-    if (info->fields->size() < values.size()) {
+    if (info->fields.size() < values.size()) {
         eval_push_error_return("INSERT INTO, more values than field names");}
 
-    if (info->fields->size() > table->column_datas->size()) {
+    if (info->fields.size() > table->column_datas.size()) {
         eval_push_error_return("INSERT INTO, more field names than table has columns");}
 
-    if (values.size() > table->column_datas->size()) {
+    if (values.size() > table->column_datas.size()) {
         eval_push_error_return("INSERT INTO, more values than table has columns");}
 
 
     // evaluate fields
-    std::vector<std::string> field_names;
-    for (const auto& field : *info->fields) {
+    avec<astring> field_names;
+    for (const auto& field : info->fields) {
         object* evaluated_field = eval_expression(field, env);
         if (evaluated_field->type() == ERROR_OBJ) {
             eval_push_error_return("eval_insert_into(): Failed to evaluate field (" + field->inspect() + ") while inserting rows"); }
@@ -1595,11 +1582,11 @@ static void eval_insert_into(const insert_into* wrapper, environment* env) {
     for (const auto& name : field_names) {
         bool found = table->check_if_field_name_exists(name);
         if (!found) {
-            eval_push_error_return("INSERT INTO: Could not find field (" + name + ") in table + (" + *table->table_name + ")"); }
+            eval_push_error_return("INSERT INTO: Could not find field (" + name + ") in table + (" + table->table_name + ")"); }
     }
 
     // evaluate values
-    std::vector<object*> e_values;
+    avec<object*> e_values;
     for (const auto& value : values) {
         object* e_value = eval_expression(value, env);
 
@@ -1609,11 +1596,11 @@ static void eval_insert_into(const insert_into* wrapper, environment* env) {
         e_values.push_back(e_value);
     }
 
-    std::vector<object*> row;
-    if (info->fields->size() > 0) {
+    avec<object*> row;
+    if (info->fields.size() > 0) {
 
         // If field matches column name, add. else add default value
-        for (size_t i = 0; i < table->column_datas->size(); i++) {
+        for (size_t i = 0; i < table->column_datas.size(); i++) {
             bool found = false;
             size_t id = 0;
             for (size_t j = 0; j < field_names.size(); j++) {
@@ -1645,7 +1632,7 @@ static void eval_insert_into(const insert_into* wrapper, environment* env) {
 
                 object* insertable = can_insert(value, data_type);
                 if (insertable->type() == ERROR_OBJ) {
-                    errors.push_back(insertable->data());
+                    errors.push_back(std::string(insertable->data()));
                     eval_push_error_return("INSERT INTO: Value (" + value->inspect() + ") evaluated to non-insertable value while inserting rows"); }
 
                 row.push_back(insertable); 
@@ -1664,13 +1651,13 @@ static void eval_insert_into(const insert_into* wrapper, environment* env) {
                 
             object* insertable = can_insert(value, data_type);
             if (insertable->type() == ERROR_OBJ) {
-                errors.push_back(insertable->data());
+                errors.push_back(std::string(insertable->data()));
                 eval_push_error_return("INSERT INTO: Value (" + value->inspect() + ") evaluated to non-insertable value while inserting rows"); }
 
             row.push_back(insertable);
         }
 
-        for (; i < table->column_datas->size(); i++) {
+        for (; i < table->column_datas.size(); i++) {
             const auto& [default_value, in_bounds] = table->get_column_default_value(i);
             if (!in_bounds) {
                 eval_push_error_return("INSERT INTO: Weird index bug 5");}
@@ -1680,7 +1667,7 @@ static void eval_insert_into(const insert_into* wrapper, environment* env) {
     if (!errors.empty()) {
         return;}
 
-    table->rows->push_back(new group_object(row));
+    table->rows.push_back(new group_object(row));
 }
 
 

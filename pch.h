@@ -2,6 +2,7 @@
 #define PCH_H
 
 #include <string>
+#include <span>
 #include <vector>
 #include <iostream>
 #include <functional>

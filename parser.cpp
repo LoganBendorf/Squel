@@ -42,15 +42,15 @@ static void parse_create_table();
 
 // static bool is_numeric_identifier();
 static object* parse_comma_seperated_list(token_type end_val);
-static std::pair<object*, token_type> parse_comma_seperated_list_ADVANCED(std::vector<token_type> end_values); // Can add precedence as well if I feel like it
+static std::pair<object*, token_type> parse_comma_seperated_list_ADVANCED(const avec<token_type>& end_values); // Can add precedence as well if I feel like it
 
 static object* parse_function();
 static object* prefix_parse_functions_with_token(token tok);
 static object* infix_parse_functions_with_obj(object* obj);
 static object* parse_expression(size_t precedence);
 
-static bool is_function_name(std::string name);
-static bool is_table_name(std::string name);
+static bool is_function_name(const std_and_astring_variant& name);
+static bool is_table_name(const std_and_astring_variant& name);
 
 static token peek();
 static token_type peek_type();
@@ -107,10 +107,11 @@ enum precedences {
             }                                           \
         } else {                                        \
             cur_tok = tokens[token_position];}          \
-        std::string error = x;                          \
-        error = error + ". Line = " + std::to_string(cur_tok.line) + ", position = " + std::to_string(cur_tok.position);\
-        errors.push_back(error);                        \
-        return new error_object(error);
+        std::stringstream error;                        \
+        error << x;                                     \
+        error << ". Line = " + std::to_string(cur_tok.line) + ", position = " + std::to_string(cur_tok.position);\
+        errors.push_back(error.str());                  \
+        return new error_object(error.str());
 
 #define push_error_return_error_object_prev_tok(x)      \
         token cur_tok = prev_token;                     \
@@ -141,29 +142,44 @@ enum precedences {
     if (token_position >= tokens.size()) [[unlikely]]{  \
         push_error_return_error_object(x);} 
 
-static bool is_function_name(std::string name) {
+static bool is_function_name(const std_and_astring_variant& name) {
+
+    astring astr;
+    std::string stdstr;
+    VISIT(name, unwrapped,
+        astr = unwrapped;
+        stdstr = unwrapped;
+    );
+
     for (const auto& func_name : function_names) {
-        if (func_name == name) {
+        if (func_name == stdstr) {
             return true; }
     }
 
     for (const auto& global_func : global_functions) {
-        if (*global_func->name == name) {
+        if (global_func->name == astr) {
             return true; }
     }
 
     return false;
 }
 
-static bool is_table_name(std::string name) {
+static bool is_table_name(const std_and_astring_variant& name) {
+
+    astring astr;
+    std::string stdstr;
+    VISIT(name, unwrapped,
+        astr = unwrapped;
+        stdstr = unwrapped;
+    );
 
     for (const auto& tab_name : table_names) {
-        if (tab_name == name) {
+        if (tab_name == stdstr) {
             return true; }
     }
 
     for (const auto& tab : global_tables) {
-        if (*tab->table_name == name) {
+        if (tab->table_name == astr) {
             return true; }
     }
 
@@ -402,7 +418,7 @@ static object* parse_insert() {
     if (peek_type() != CLOSE_PAREN) {
         push_error_return_error_object("Field names missing closing parenthesis");}
 
-    std::vector<object*> fields = *static_cast<group_object*>(fields_obj)->elements;
+    avec<object*> fields = static_cast<group_object*>(fields_obj)->elements;
 
     advance_and_check_ret_obj("INSERT INTO table, missing VALUES");
 
@@ -465,9 +481,9 @@ static object* parse_insert() {
     return errored_list;
 
 // Starts on first value, end on end val, returns which value it snded on
-static std::pair<object*, token_type> parse_comma_seperated_list_ADVANCED(std::vector<token_type> end_values) {
+static std::pair<object*, token_type> parse_comma_seperated_list_ADVANCED(const avec<token_type>& end_values) {
 
-    std::vector<object*> list;
+    avec<object*> list;
 
     if (std::ranges::find(end_values, peek_type()) != end_values.end()) {
         return {new group_object(list), peek_type()}; }
@@ -502,7 +518,7 @@ static std::pair<object*, token_type> parse_comma_seperated_list_ADVANCED(std::v
 // Starts on first value, end on end val
 static object* parse_comma_seperated_list(token_type end_val) {
 
-    std::vector<object*> list;
+    avec<object*> list;
 
     if (peek_type() == end_val) {
         return new group_object(list); }
@@ -533,7 +549,7 @@ static object* parse_comma_seperated_list(token_type end_val) {
 // Starts on first value, end on end val
 static object* parse_comma_seperated_list_end_if_not_comma() {
 
-    std::vector<object*> list;
+    avec<object*> list;
 
     size_t loop_count = 0;
     while (loop_count++ < 100) {
@@ -579,7 +595,7 @@ static object* parse_select() {
 
     advance_and_check_ret_obj("No tokens after SELECT")
 
-    const std::vector<token_type> end_types = {FROM, SEMICOLON, CLOSE_PAREN};  //!!MAJOR maybe make global open paren count and return error if count is wrong
+    const avec<token_type> end_types = {FROM, SEMICOLON, CLOSE_PAREN};  //!!MAJOR maybe make global open paren count and return error if count is wrong
     const auto& [selector_group, end_type] = parse_comma_seperated_list_ADVANCED(end_types);
     if (selector_group->type() != GROUP_OBJ) {
         push_error_return_error_object("SELECT: Failed to parse SELECT column indexes"); }
@@ -588,7 +604,7 @@ static object* parse_select() {
         push_error_return_error_object("SELECT: Failed to parse SELECT column indexes, strange end type (" + token_type_to_string(end_type) + ")"); }
     
 
-    std::vector<object*> selectors = *static_cast<group_object*>(selector_group)->elements;
+    avec<object*> selectors = static_cast<group_object*>(selector_group)->elements;
 
     if (selectors.size() == 0) {
         push_error_return_error_object("No values after SELECT");}
@@ -617,7 +633,7 @@ static object* parse_select() {
     }
 
     // Get condition chain
-    std::vector<object*> clause_chain;
+    avec<object*> clause_chain;
     while (peek_type() != SEMICOLON && peek_type() != LINE_END && peek_type() != CLOSE_PAREN) { //!!MAJOR don't like this close paren check, would prefer to not even have to checks
 
         object* clause = parse_expression(LOWEST);
@@ -733,7 +749,7 @@ static void parse_create_table() {
     
     advance_and_check("No data in CREATE TABLE");
 
-    std::vector<table_detail_object*> details;
+    avec<table_detail_object*> details;
 
     size_t max_loops = 0;
     while (max_loops++ < 100) {
@@ -748,7 +764,7 @@ static void parse_create_table() {
                 return; }
 
             data_type = param->data_type;
-            name = new string_object(*param->name);
+            name = new string_object(param->name);
         } else {
             data_type = parse_expression(LOWEST);
             if (data_type->type() == ERROR_OBJ) {
@@ -798,7 +814,7 @@ static void parse_create_table() {
 
     nodes.push_back(info);
 
-    table_names.push_back(table_name->data());
+    table_names.push_back(std::string(table_name->data()));
 }
 
 
@@ -874,7 +890,7 @@ object* parse_prefix_if() {
     advance_and_check_ret_obj("No tokens after THEN");
 
     // BODY
-    std::vector<object*> body;
+    avec<object*> body;
 
     if (peek_type() == BEGIN) {
         size_t max_loops = 0;
@@ -939,7 +955,7 @@ object* parse_prefix_if() {
             return endif; }
             
         if (endif->type() != END_IF_STATEMENT) {
-            push_error_return_error_object("No END IF in " + token_type_to_string(starter_token.type) + " statement, got (" + endif->inspect() + ")"); }
+            push_error_return_error_object("No END IF in " + token_type_to_string(starter_token.type) + " statement, got (" + std::string(endif->inspect()) + ")"); }
         
     }
 
@@ -955,7 +971,7 @@ object* parse_block_statement() {
 
     
     // BODY
-    std::vector<object*> body;
+    avec<object*> body;
 
     if (peek_type() == BEGIN) {
         size_t max_loops = 0;
@@ -994,7 +1010,7 @@ object* parse_function() {
 
     advance_and_check_ret_obj("No tokens after BEGIN");
 
-    std::vector<object*> statement_list;
+    avec<object*> statement_list;
     size_t max_loops = 0;
     while (max_loops++ < 100) {
         object* statement = parse_expression(LOWEST);
@@ -1383,7 +1399,7 @@ object* prefix_parse_functions_with_token(token tok) {
 
         object* right_expression = parse_expression(SQL_STATEMENT); // SOMETHING SUSSY HERE!!!!!!!!!!!!!!!!!!!!
         if (right_expression->type() != INFIX_EXPRESSION_OBJ) {
-            errors.push_back(right_expression->data());
+            errors.push_back(std::string(right_expression->data()));
             push_error_return_error_object("LEFT JOIN: Failed to parse right expression"); 
         }
 
@@ -1555,8 +1571,7 @@ object* infix_parse_functions_with_obj(object* left) {
         return new infix_expression_object(new operator_object(LEFT_JOIN_OP), left, inner);
     }
     default:
-        push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
-        return new error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + left->inspect() + ")");
+        push_error_return_error_object("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + std::string(left->inspect()) + ")");
     }
 }
 

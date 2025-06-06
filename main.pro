@@ -2,11 +2,15 @@
 QT += widgets
 TEMPLATE = app
 SOURCES += evaluator.cpp helpers.cpp lexer.cpp main.cpp parser.cpp print.cpp test_reader.cpp node.cpp object.cpp environment.cpp arena.cpp
-HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h arena.h
+HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h arena.h arena_aliases.h
 TARGET = squel
 
 DESTDIR = build
 OBJECTS_DIR = build
+
+# Always emit color!
+QMAKE_CXXFLAGS += -fdiagnostics-color=always
+QMAKE_LDFLAGS  += -fdiagnostics-color=always
 
 # C++ 20
 QMAKE_CXXFLAGS += -std=c++20

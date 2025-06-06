@@ -1,3 +1,4 @@
 #include "arena.h"
 
-arena arena_inst;
+// Don't think <Type> matters
+arena<bool> arena_inst{};

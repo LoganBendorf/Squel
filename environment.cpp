@@ -6,164 +6,132 @@
 #include <object.h>
 
 
-class arena;
-extern arena arena_inst;
-
-void* environment::operator new(std::size_t size, bool use_arena) {
-    if (use_arena) {
-        return arena_inst.allocate(size, alignof(environment)); // maybe get rid of second parameter
-    }
-    else {
-        return ::operator new(size);
-    }
-}
-void environment::operator delete([[maybe_unused]] void* ptr, [[maybe_unused]] bool b) noexcept {
-    std::cout << "\n\nDELETE BAD!!!!\n\n";
-    exit(1);
-}
-void environment::operator delete(void* ptr) noexcept {
-    // if it came from the heap, free it; if arena, do nothing
-    ::operator delete(ptr);
-}
-void* environment::operator new[](std::size_t size, bool use_arena) {
-    if (use_arena) {
-        return arena_inst.allocate(size, alignof(environment));
-    }
-    else {
-        return ::operator new(size);
-    }
-}
-void environment::operator delete[]([[maybe_unused]] void* p) noexcept {
-    std::cout << "\n\nDELETE BAD!!!!\n\n";
-    exit(1);
-}
+arena<environment> environment::environment_arena_alias;
 
 
-
-environment::environment([[maybe_unused]] bool use_arena) {
-    in_arena = use_arena;
+environment::environment() {
     parent = NULL; 
 
-    void* mem = arena_inst.allocate(sizeof(std::vector<evaluated_function_object*>), alignof(std::vector<evaluated_function_object*>)); 
-    auto vec_ptr = new (mem) std::vector<evaluated_function_object*>();                                  
-    functions = vec_ptr;                                                             
-    arena_inst.register_dtor([vec_ptr]() {                                      
-        vec_ptr->std::vector<evaluated_function_object*>::~vector();                                              \
-    });
-
-    mem = arena_inst.allocate(sizeof(std::vector<variable_object*>), alignof(std::vector<variable_object*>)); 
-    auto var_vec_ptr = new (mem) std::vector<variable_object*>();                                  
-    variables = var_vec_ptr;                                                             
-    arena_inst.register_dtor([var_vec_ptr]() {                                      
-        var_vec_ptr->std::vector<variable_object*>::~vector();                                              \
-    });
+    if (in_arena) {
+        functions = avec<evaluated_function_object*>();
+        variables = avec<variable_object*>();
+    } else {
+        functions = hvec(evaluated_function_object*);
+        variables = hvec(variable_object*);
+    }
 }
 
-environment::environment(environment* par, [[maybe_unused]] bool use_arena) {
-    in_arena = use_arena;
+environment::environment(environment* par) {
+    
     parent = par; 
 
-    void* mem = arena_inst.allocate(sizeof(std::vector<evaluated_function_object*>), alignof(std::vector<evaluated_function_object*>)); 
-    auto vec_ptr = new (mem) std::vector<evaluated_function_object*>();                                  
-    functions = vec_ptr;                                                             
-    arena_inst.register_dtor([vec_ptr]() {                                      
-        vec_ptr->std::vector<evaluated_function_object*>::~vector();                                              \
-    });
+    if (in_arena) {
+        functions = avec<evaluated_function_object*>();
+        variables = avec<variable_object*>();
+    } else {
+        functions = hvec(evaluated_function_object*);
+        variables = hvec(variable_object*);
+    }
 
-    mem = arena_inst.allocate(sizeof(std::vector<variable_object*>), alignof(std::vector<variable_object*>)); 
-    auto var_vec_ptr = new (mem) std::vector<variable_object*>();                                  
-    variables = var_vec_ptr;                                                             
-    arena_inst.register_dtor([var_vec_ptr]() {                                      
-        var_vec_ptr->std::vector<variable_object*>::~vector();                                              \
-    });
 }
 
 environment::~environment() {
     if (in_arena) {
-        for (const auto& func : *functions) {
+        for (const auto& func : functions) {
             delete func;
         }
-        delete functions;
-        for (const auto& var : *variables) {
+        for (const auto& var : variables) {
             delete var;
         }
-        delete variables; 
     }
 }
 
 
 bool environment::add_function(evaluated_function_object* func) {
-    if (is_function(*func->name)) {
+    if (is_function(func->name)) {
         return false; }
-    functions->push_back(func);
+    functions.push_back(func);
     return true;
 }
 
 void environment::add_or_replace_function(evaluated_function_object* new_func) {
     bool exists = false;
-    for (size_t i = 0; i < functions->size(); i++) {
-        if ((*functions)[i]->name == new_func->name) {
-            (*functions)[i] = new_func;
+    for (size_t i = 0; i < functions.size(); i++) {
+        if (functions[i]->name == new_func->name) {
+            functions[i] = new_func;
             exists = true;
             break;
         }
     }
 
     if (!exists) {
-        functions->push_back(new_func); }
+        functions.push_back(new_func); }
 }
 
-bool environment::is_function(std::string name) {
-    for (const auto& func : *functions) {
-        if (*func->name == name) {
+bool environment::is_function(const std_and_astring_variant& name) {
+
+    astring unwrapped_name;
+    VISIT(name, unwrapped,
+        unwrapped_name = unwrapped;
+    );
+
+    for (const auto& func : functions) {
+        if (func->name == unwrapped_name) {
             return true; }
     }
 
     // If not in child scope, maybe in parent scope
     if (parent) { 
-        return parent->is_function(name); }
+        return parent->is_function(unwrapped_name); }
 
     return false;
+    
 }
 
-object* environment::get_function(std::string name) {
-    for (const auto& func : *functions) {
-        if (*func->name == name) {
+object* environment::get_function(const std_and_astring_variant& name) {
+
+    astring unwrapped_name;
+    VISIT(name, unwrapped,
+        unwrapped_name = unwrapped;
+    );
+
+    for (const auto& func : functions) {
+        if (func->name == unwrapped_name) {
             return func; }
     }
 
     // If not in child scope, maybe in parent scope
     if (parent) { 
-        return parent->get_function(name); }
+        return parent->get_function(unwrapped_name); }
 
     return new error_object();
 }
 
-bool environment::add_variables(std::vector<argument_object*> args) {
+bool environment::add_variables(const avec<argument_object*>& args) {
     for (const auto& arg : args) {
-        if (is_variable(*arg->name)) {
+        if (is_variable(arg->name)) {
             return false; }
     }
 
     for (const auto& arg : args) {
-        variable_object* variable = new variable_object(*arg->name, arg->value);
-        variables->push_back(variable);
+        variable_object* variable = new variable_object(arg->name, arg->value);
+        variables.push_back(variable);
     }
     return true;
 }
 
 bool environment::add_variable(variable_object* var) {
-    if (is_variable(*var->name)) {
+    if (is_variable(var->name)) {
         return false; 
     }
 
-    variables->push_back(var);
+    variables.push_back(var);
     return true;
 }
 
-bool environment::is_variable(std::string name) {
-    for (const auto& var : *variables) {
-        if (*var->name == name) {
+bool environment::is_variable(const astring& name) {
+    for (const auto& var : variables) {
+        if (var->name == name) {
             return true; }
     }
 
@@ -174,25 +142,31 @@ bool environment::is_variable(std::string name) {
     return false;
 }
 
-object* environment::get_variable(std::string name) {
-    for (const auto& var : *variables) {
-        if (*var->name == name) {
+object* environment::get_variable(const std_and_astring_variant& name) {
+
+    astring unwrapped_name;
+    VISIT(name, unwrapped,
+        unwrapped_name = unwrapped;
+    );
+
+    for (const auto& var : variables) {
+        if (var->name == unwrapped_name) {
             return var;
         }
     }
 
     // If not in child scope, maybe in parent scope
     if (parent) { 
-        return parent->get_variable(name); }
+        return parent->get_variable(unwrapped_name); }
 
     return new error_object("Variable not found");
 }
 
-std::vector<std::string> environment::inspect_variables() {
+avec<astring> environment::inspect_variables() {
 
-    std::vector<std::string> inspected;
-    inspected.reserve(variables->size());
-    for (const auto& var : *variables) {
+    avec<astring> inspected;
+    inspected.reserve(variables.size());
+    for (const auto& var : variables) {
         inspected.push_back(var->inspect());
     }
 

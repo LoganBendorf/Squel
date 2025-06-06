@@ -1,16 +1,17 @@
 #pragma once
 
-// objects are made in the parser and should probably stay there, used to parse and return values from expressions
+// objects are made in the parser, used to parse and return values from expressions
     // i.e (10 + 10) will return an integer_object with the value 20
 
 #include "pch.h"
 
 #include "token.h"
 #include "arena.h"
+#include "arena_aliases.h"
 #include "structs_and_macros.h" // For table
 
-template<typename T>
-using avec = std::vector<T, MyAllocator<T>>;
+
+
 
 
 enum object_type {
@@ -36,24 +37,129 @@ enum operator_type {
 };
 
 
-std::string object_type_to_string(object_type index);
-std::string operator_type_to_string(operator_type index);
+astring object_type_to_astring(object_type index);
+astring operator_type_to_astring(operator_type index);
+
+template<typename T>
+T astring_to_numeric(const astring& str) {
+    T result;
+    const auto& [ptr, ec]  = std::from_chars(str.data(), str.data() + str.size(), result);
+
+    if (ec == std::errc{}) {
+        return result;
+    } else {
+        throw std::invalid_argument("Invalid numeric string");
+    }
+}
+
+template<typename T>
+astring numeric_to_astring(T value, bool in_arena = false) {
+    char buffer[64];  // Larger buffer to handle floating point
+    const auto& [ptr, ec] = std::to_chars(buffer, buffer + sizeof(buffer), value);
+    
+    if (ec == std::errc{}) {
+        arena<char> alloc = arena<char>{in_arena};
+        return astring(buffer, static_cast<std::size_t>(ptr - buffer), alloc);
+    } else {
+        throw std::runtime_error("Numeric to string conversion failed");
+    }
+}
+
+
+// For std_and_astring_variant
+#define VISIT(to_unwrap, var_name, ...)                \
+    do {                                               \
+        std::visit(                                   \
+            [&](const auto& var_name) {                \
+                __VA_ARGS__;                           \
+            },                                         \
+            to_unwrap.get_variant()                    \
+        );                                             \
+    } while (0)
+
+
 
 class object {
+    protected:
+    static arena<object> object_arena_alias; // all arenas are alias for the global one
 
     public:
-    virtual std::string inspect() const = 0;  
+    virtual astring inspect() const = 0;  
     virtual object_type type() const = 0;    
-    virtual std::string data() const = 0;    
+    virtual astring data() const = 0;    
     virtual object* clone(bool use_arena) const = 0;    
     virtual ~object() noexcept = default; 
     
     
-    static void* operator new(std::size_t size, bool use_arena = true);
-    static void  operator delete([[maybe_unused]] void* ptr, [[maybe_unused]] bool b) noexcept;
-    static void  operator delete(void* ptr) noexcept;
-    static void* operator new[](std::size_t size, bool use_arena = true);
-    static void  operator delete[]([[maybe_unused]] void* p) noexcept;
+    // static void* operator new(std::size_t size);
+    // static void* operator new(std::size_t size, bool use_arena);
+    // static void  operator delete([[maybe_unused]] void* ptr, [[maybe_unused]] bool b) noexcept;
+    // static void  operator delete(void* ptr) noexcept;
+    // static void* operator new[](std::size_t size);
+    // static void  operator delete[]([[maybe_unused]] void* p) noexcept;
+
+    static void* operator new(std::size_t size, bool use_arena) {
+        object* obj;
+        if (use_arena) {
+            obj = object_arena_alias.allocate(size, alignof(object));
+            if (obj) { 
+                obj->in_arena = true; }
+        } else {
+            auto heap_arena = arena<object>{HEAP};
+            obj = heap_arena.allocate(size, alignof(object));
+            if (obj) { 
+                obj->in_arena = false;}
+        }
+        return obj;
+    }
+
+    static void* operator new(std::size_t size) {
+        object* obj = object_arena_alias.allocate(size, alignof(object));
+        if (obj) { 
+            obj->in_arena = true; }
+        return obj;
+    }
+    
+    // Matching delete for placement new above
+    static void operator delete([[maybe_unused]] void* ptr, bool) noexcept {
+        std::cout << "\n\nDELETE BAD!!!!\n\n";
+        exit(1);
+    }
+    
+    // Standard delete
+    static void operator delete(void* ptr) noexcept {
+        if (!ptr) return;
+        
+        object* obj = static_cast<object*>(ptr);
+        if (obj->in_arena) {
+            // Arena objects - the arena handles cleanup
+            // In a real implementation, you might want to call:
+            // global_object_arena.deallocate_bytes(ptr);
+            return;
+        } else {
+            ::operator delete(ptr);
+        }
+    }
+    
+    // Array versions
+    static void* operator new[](std::size_t size, bool use_arena) {
+        if (use_arena) {
+            return object_arena_alias.allocate(size, alignof(object));
+        } else {
+            return ::operator new[](size);
+        }
+    }
+    
+    static void* operator new[](std::size_t size) {
+        return ::operator new[](size);
+    }
+    
+    static void operator delete[](void* ptr) noexcept {
+        if (!ptr) return;
+        // For arrays, we'd need additional metadata to track arena vs heap
+        // This is simplified - in practice you'd want to track this
+        ::operator delete[](ptr);
+    }
 
     public:
     bool in_arena = true;
@@ -63,9 +169,9 @@ class object {
 class null_object : public object {
 
     public:
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     null_object* clone(bool use_arena) const override;
 };
 
@@ -73,9 +179,9 @@ class operator_object : public object {
     public:
     operator_object(const operator_type type);
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     operator_object* clone(bool use_arena) const override;
 
     public:
@@ -85,12 +191,12 @@ class operator_object : public object {
 class table_object;
 class table_info_object : public object {
     public:
-    table_info_object(table_object* set_tab, std::vector<size_t> set_col_ids, std::vector<size_t> set_row_ids, bool use_arena = true, bool clone = false);
+    table_info_object(table_object* set_tab, const avec<size_t>& set_col_ids, const avec<size_t>& set_row_ids, bool clone = false);
     ~table_info_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     table_info_object* clone(bool use_arena) const override;
 
     public:
@@ -105,9 +211,9 @@ class expression_object : public object {
     public:
     virtual ~expression_object() = default;
 
-    virtual std::string inspect() const = 0;
+    virtual astring inspect() const = 0;
     virtual object_type type() const = 0;
-    virtual std::string data() const = 0;
+    virtual astring data() const = 0;
 
     virtual expression_object* clone(bool use_arena) const = 0;
 
@@ -118,12 +224,12 @@ class expression_object : public object {
 class infix_expression_object : public expression_object {
 
     public:
-    infix_expression_object(operator_object* set_op, object* set_left, object* set_right, bool use_arena = true, bool clone = false);
+    infix_expression_object(operator_object* set_op, object* set_left, object* set_right, bool clone = false);
     ~infix_expression_object();
     
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     infix_expression_object* clone(bool use_arena) const override;
 
     operator_type get_op_type() const override;
@@ -137,12 +243,12 @@ class infix_expression_object : public expression_object {
 class prefix_expression_object : public expression_object {
 
     public:
-    prefix_expression_object(operator_object* set_op, object* set_right, bool use_arena = true, bool clone = false);
+    prefix_expression_object(operator_object* set_op, object* set_right, bool clone = false);
     ~prefix_expression_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     prefix_expression_object* clone(bool use_arena) const override;
 
     operator_type get_op_type() const override;
@@ -158,10 +264,11 @@ class integer_object : public object {
     integer_object();
     integer_object(int val);
     integer_object(const std::string& val);
+    integer_object(const astring& val);
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     integer_object* clone(bool use_arena) const override;
 
     public:
@@ -174,10 +281,11 @@ class index_object : public object {
     index_object();
     explicit index_object(size_t val);
     index_object(const std::string& val);
+    index_object(const astring& val);
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     index_object* clone(bool use_arena) const override;
 
     public:
@@ -190,10 +298,11 @@ class decimal_object : public object {
     decimal_object();
     decimal_object(double val);
     decimal_object(const std::string& val);
+    decimal_object(const astring& val);
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     decimal_object* clone(bool use_arena) const override;
 
     public:
@@ -203,27 +312,27 @@ class decimal_object : public object {
 class string_object : public object {
 
     public:
-    string_object(const std::string& val, bool use_arena = true);
+    string_object(const std_and_astring_variant& val);
     ~string_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     string_object* clone(bool use_arena) const override;
 
     public:
-    std::string* value;
+    astring value;
 };
 
 class return_value_object : public object {
 
     public:
-    return_value_object(object* val, bool use_arena = true, bool clone = false);
+    return_value_object(object* val, bool clone = false);
     ~return_value_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     return_value_object* clone(bool use_arena) const override;
 
     public:
@@ -233,32 +342,33 @@ class return_value_object : public object {
 class argument_object : public object {
 
     public:
-    argument_object(const std::string& set_name, object* val, bool use_arena = true, bool clone = false);
+    argument_object(const std_and_astring_variant& set_name, object* val, bool clone = false);
     ~argument_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     argument_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     object* value;
 };
+
 
 class variable_object : public object {
 
     public:
-    variable_object(const std::string& set_name, object* val, bool use_arena = true, bool clone = false);
+    variable_object(const std_and_astring_variant& set_name, object* val, bool clone = false);
     ~variable_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     variable_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     object* value;
 };
 
@@ -267,9 +377,9 @@ class boolean_object : public object {
     public:
     boolean_object(bool val);
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     boolean_object* clone(bool use_arena) const override;
 
     public:
@@ -280,12 +390,12 @@ class boolean_object : public object {
 class SQL_data_type_object: public object {
 
     public:
-    SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool use_arena = true, bool clone = false);
+    SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool clone = false);
     ~SQL_data_type_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     SQL_data_type_object* clone(bool use_arena) const override;
 
     public:
@@ -297,32 +407,32 @@ class SQL_data_type_object: public object {
 class parameter_object : public object {
 
     public:
-    parameter_object(const std::string& set_name, SQL_data_type_object* set_data_type, bool use_arena = true, bool clone = false);
+    parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, bool clone = false);
     ~parameter_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     parameter_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     SQL_data_type_object* data_type;
 };
 
 class table_detail_object : public object {
 
     public:
-    table_detail_object(const std::string& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool use_arena = true, bool clone = false);
+    table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool clone = false);
     ~table_detail_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     table_detail_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     SQL_data_type_object* data_type;
     object* default_value;
 };
@@ -330,13 +440,13 @@ class table_detail_object : public object {
 class group_object : public object {
 
     public:
-    group_object(object* objs, bool use_arena = true, bool clone = false);
-    group_object(std::vector<object*> objs, bool use_arena = true, bool clone = false);
+    group_object(object* objs, bool clone = false);
+    group_object(const avec<object*>& objs, bool clone = false);
     ~group_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     group_object* clone(bool use_arena) const override;
 
     public:
@@ -348,16 +458,16 @@ class block_statement;
 class function_object : public object {
 
     public:
-    function_object(const std::string& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool use_arena = true, bool clone = false);
+    function_object(const std_and_astring_variant& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool clone = false);
     ~function_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     function_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     group_object* parameters;
     SQL_data_type_object* return_type;
     block_statement* body;
@@ -366,18 +476,18 @@ class function_object : public object {
 class evaluated_function_object : public object {
 
     public:
-    evaluated_function_object(std::string* set_name, std::vector<parameter_object*>* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool use_arena = true, bool clone = false);
-    evaluated_function_object(function_object* func, std::vector<parameter_object*> new_parameters, bool use_arena = true, bool clone = false);
+    evaluated_function_object(const std_and_astring_variant& set_name, const avec<parameter_object*>& set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool clone = false);
+    evaluated_function_object(function_object* func, const avec<parameter_object*>& new_parameters, bool clone = false);
     ~evaluated_function_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     evaluated_function_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
-    std::vector<parameter_object*>* parameters;
+    astring name;
+    avec<parameter_object*> parameters;
     SQL_data_type_object* return_type;
     block_statement* body;
 };
@@ -385,16 +495,16 @@ class evaluated_function_object : public object {
 class function_call_object : public object {
 
     public:
-    function_call_object(const std::string& set_name, group_object* args, bool use_arena = true, bool clone = false);
+    function_call_object(const std_and_astring_variant& set_name, group_object* args, bool clone = false);
     ~function_call_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     function_call_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     group_object* arguments;
 };
 
@@ -402,13 +512,13 @@ class function_call_object : public object {
 class column_object: public object {
 
     public:
-    column_object(object* name_data_type, bool use_arena = true, bool clone = false);
-    column_object(object* name_data_type, object* default_val, bool use_arena = true, bool clone = false);
+    column_object(object* name_data_type, bool clone = false);
+    column_object(object* name_data_type, object* default_val, bool clone = false);
     ~column_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     column_object* clone(bool use_arena) const override;
 
     public:
@@ -419,19 +529,18 @@ class column_object: public object {
 class values_wrapper_object : public object {
 
     public:
-    std::vector<object*>* values;
+    avec<object*> values;
 };
 
 class column_values_object: public values_wrapper_object {
 
     public:
-    column_values_object(std::vector<object*> set_values, bool use_arena = true, bool clone = false);
-    column_values_object(std::vector<object*>* const& set_values, bool use_arena = true, bool clone = false);
+    column_values_object(const avec<object*>& set_values, bool clone = false);
     ~column_values_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     column_values_object* clone(bool use_arena) const override;
 
 };
@@ -439,62 +548,63 @@ class column_values_object: public values_wrapper_object {
 class evaluated_column_object: public object {
 
     public:
-    evaluated_column_object(const std::string& name, SQL_data_type_object* type, const std::string& default_val, bool use_arena = true, bool clone = false);
+    evaluated_column_object(const std_and_astring_variant& set_name, SQL_data_type_object* type, 
+                            const std_and_astring_variant& set_default_value, bool clone = false);
     ~evaluated_column_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     evaluated_column_object* clone(bool use_arena) const override;
 
     public:
-    std::string* name;
+    astring name;
     SQL_data_type_object* data_type;
-    std::string* default_value;
+    astring default_value;
 };
 
 class error_object : public object {
 
     public:
-    error_object(bool use_arena = true);
-    error_object(const std::string& val, bool use_arena = true);
+    error_object();
+    error_object(const std_and_astring_variant& val);
     ~error_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     error_object* clone(bool use_arena) const override;
 
     public:
-    std::string* value;
+    astring value;
 };
 
 class semicolon_object : public object {
 
     public:
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     semicolon_object* clone(bool use_arena) const override;
 };
 
 class star_object : public object {
 
     public:
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     star_object* clone(bool use_arena) const override;
 };
 
 class column_index_object : public object {
     public:
-    column_index_object(object* set_table_name, object* set_column_name, bool use_arena = true, bool clone = false);
+    column_index_object(object* set_table_name, object* set_column_name, bool clone = false);
     ~column_index_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     column_index_object* clone(bool use_arena) const override;
 
     public:
@@ -504,84 +614,84 @@ class column_index_object : public object {
 
 class table_object : public object {
     public:
-    table_object(const std::string& set_table_name, table_detail_object* set_column_datas, group_object* set_rows, bool use_arena = true, bool clone = false);
-    table_object(const std::string& set_table_name, std::vector<table_detail_object*> set_column_datas, std::vector<group_object*> set_rows, bool use_arena = true, bool clone = false);
+    table_object(const std_and_astring_variant& set_table_name, table_detail_object* set_column_datas, group_object* set_rows, bool clone = false);
+    table_object(const std_and_astring_variant& set_table_name, const avec<table_detail_object*>& set_column_datas, const avec<group_object*>& set_rows, bool clone = false);
     ~table_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     table_object* clone(bool use_arena) const override;
 
-    std::pair<std::string, bool> get_column_name(size_t index) const;
-    std::pair<std::vector<object*>*, bool> get_column(size_t index) const;
-    std::pair<std::vector<object*>*, bool> get_column(const std::string& col_name) const;
+    std::pair<avec<object*>, bool> get_column(size_t index) const;
+    std::pair<avec<object*>, bool> get_column(const std_and_astring_variant& col_name) const;
+    std::pair<astring, bool> get_column_name(size_t index) const;
     std::pair<SQL_data_type_object*, bool> get_column_data_type(size_t index) const;
     std::pair<object*, bool> get_column_default_value(size_t row_index) const;
-    std::pair<size_t, bool> get_column_index(const std::string& name) const;
+    std::pair<size_t, bool> get_column_index(const std_and_astring_variant& name) const;
     std::pair<object*, bool> get_cell_value(size_t row_index, size_t col_index) const;
-    std::pair<const std::vector<object*>&, bool> get_row_vector(size_t index) const;
-    std::vector<size_t> get_row_ids() const;
+    std::pair<const avec<object*>&, bool> get_row_vector(size_t index) const;
+    avec<size_t> get_row_ids() const;
 
-    bool check_if_field_name_exists(const std::string& name) const;
+    bool check_if_field_name_exists(const std_and_astring_variant& name) const;
 
     public:
-    std::string* table_name;
-    std::vector<table_detail_object*>* column_datas;
-    std::vector<group_object*>* rows;
+    astring table_name;
+    avec<table_detail_object*> column_datas;
+    avec<group_object*> rows;
 };
 
 class table_aggregate_object : public object {
     public:
-    table_aggregate_object(bool use_arena = true);
-    table_aggregate_object(std::vector<table_object*> set_tables, bool use_arena = true, bool clone = false);
+    table_aggregate_object();
+    table_aggregate_object(const avec<table_object*>& set_tables, bool clone = false);
     ~table_aggregate_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     table_aggregate_object* clone(bool use_arena) const override;
 
-    std::pair<size_t, object*> get_col_id(const std::string& column_name) const;
-    std::pair<size_t, object*> get_col_id(const std::string& table_name, const std::string& column_name) const;
-    std::pair<size_t, object*> get_col_id(const std::string& table_name, size_t index) const;
-    std::vector<size_t> get_all_col_ids() const;
+    std::pair<size_t, object*> get_col_id(const std_and_astring_variant& column_name) const;
+    std::pair<size_t, object*> get_col_id(const std_and_astring_variant& table_name, const std_and_astring_variant& column_name) const;
+    std::pair<size_t, object*> get_col_id(const std_and_astring_variant& table_name, size_t index) const;
+    avec<size_t> get_all_col_ids() const;
     std::pair<size_t, bool> get_last_col_id() const;
-    std::pair<std::string, bool> get_table_name(size_t index) const;
-    table_object* combine_tables(const std::string& name) const;
+    std::pair<astring, bool> get_table_name(size_t index) const;
+    table_object* combine_tables(const std_and_astring_variant& name) const;
     void add_table(table_object* table);
 
     public:
-    std::vector<table_object*>* tables;
+    avec<table_object*> tables;
 };
 
 // Node objects
 class insert_into_object : public object {
 
     public:
-    insert_into_object(object* set_table_name, std::vector<object*> set_fields, object* set_values, bool use_arena = true, bool clone = false);
+    insert_into_object(object* set_table_name, const avec<object*>& set_fields, object* set_values, bool clone = false);
     ~insert_into_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     insert_into_object* clone(bool use_arena) const override;
 
     public:
     object* table_name;
-    std::vector<object*>* fields;
+    avec<object*> fields;
     object* values;
 };
 
 class select_object : public object {
     
     public:
-    select_object(object* set_value, bool use_arena = true, bool clone = false);
+    select_object(object* set_value, bool clone = false);
     ~select_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     select_object* clone(bool use_arena) const override;
 
     public:
@@ -591,17 +701,17 @@ class select_object : public object {
 class select_from_object : public object {
     
     public:
-    select_from_object(std::vector<object*> set_column_names, std::vector<object*> set_clause_chain, bool use_arena = true, bool clone = false);
+    select_from_object(const avec<object*>& set_column_names, const avec<object*>& set_clause_chain, bool clone = false);
     ~select_from_object();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     select_from_object* clone(bool use_arena) const override;
 
     public:
-    std::vector<object*>* column_indexes;
-    std::vector<object*>* clause_chain;
+    avec<object*> column_indexes;
+    avec<object*> clause_chain;
 };
 
 
@@ -609,27 +719,27 @@ class select_from_object : public object {
 class block_statement : public object {
 
     public:
-    block_statement(std::vector<object*> set_body, bool use_arena = true, bool clone = false);
+    block_statement(const avec<object*>& set_body, bool clone = false);
     ~block_statement();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     block_statement* clone(bool use_arena) const override;
 
     public:
-    std::vector<object*>* body;
+    avec<object*> body;
 };
 
 class if_statement : public object {
 
     public:
-    if_statement(object* set_condition, block_statement* set_body, object* set_other, bool use_arena = true, bool clone = false);
+    if_statement(object* set_condition, block_statement* set_body, object* set_other, bool clone = false);
     ~if_statement();
 
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     if_statement* clone(bool use_arena) const override;
 
     public:
@@ -641,30 +751,30 @@ class if_statement : public object {
 class end_if_statement : public object {
 
     public:
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     end_if_statement* clone(bool use_arena) const override;
 };
 
 class end_statement : public object {
 
     public:
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     end_statement* clone(bool use_arena) const override;
 };
 
 class return_statement : public object {
 
     public:
-    return_statement(object* expr, bool use_arena = true, bool clone = false);
+    return_statement(object* expr, bool clone = false);
     ~return_statement();
     
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     return_statement* clone(bool use_arena) const override;
 
     public:
@@ -678,12 +788,12 @@ class assert_object : public object {
 
     public:
     assert_object(object* , bool ) = delete; // Produces weird error but stops stupid conversions
-    explicit assert_object(object* expr, size_t set_line, bool use_arena = true, bool clone = false);
+    explicit assert_object(object* expr, size_t set_line, bool clone = false);
     ~assert_object();
     
-    std::string inspect() const override;
+    astring inspect() const override;
     object_type type() const override;
-    std::string data() const override;
+    astring data() const override;
     assert_object* clone(bool use_arena) const override;
 
     public:

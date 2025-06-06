@@ -10,6 +10,8 @@
 #include "arena.h"
 #include "object.h"
 
+extern arena<bool> arena_inst;
+
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
@@ -409,38 +411,38 @@ static void display_graphical_table(QGridLayout* table_grid) {
 
     table_object* tab = tab_info->tab;
 
-    table_grid->addWidget(new QLabel(QString::fromStdString("Table: " + *tab->table_name)), 0, 0); // err
+    table_grid->addWidget(new QLabel(QString::fromStdString(std::string("Table: " + tab->table_name))), 0, 0); // err
 
-    if (tab_info->col_ids->size() == 0) {
+    if (tab_info->col_ids.size() == 0) {
         return;}
 
     // new begin
     int y = 1;
     int x = 0;
-    for (const auto& col_id : *tab_info->col_ids) {
+    for (const auto& col_id : tab_info->col_ids) {
 
         const auto& [col_name, col_in_bounds] = tab->get_column_name(col_id);
         if (!col_in_bounds) {
             errors.push_back("display_graphical_table(): Out of bounds column index"); return; }
 
-        table_grid->addWidget(new QLabel(QString::fromStdString(col_name)), y, x);
+        table_grid->addWidget(new QLabel(QString::fromStdString(std::string(col_name))), y, x);
         x++;
     }
 
     x = 0;
     y = 2;
-    for (const auto& row_index : *tab_info->row_ids) {
+    for (const auto& row_index : tab_info->row_ids) {
 
         const auto& [row, row_index_in_bounds] = tab->get_row_vector(row_index);
         if (!row_index_in_bounds) {
             errors.push_back("print_table(): Out of bounds row index"); return; }
-        for (const auto& col_id : *tab_info->col_ids) {
+        for (const auto& col_id : tab_info->col_ids) {
             if (col_id >= row.size()) {
                 errors.push_back("print_table(): Out of bounds column index"); 
                 return;
             }
 
-            std::string cell_value = row[col_id]->data(); 
+            std::string cell_value = std::string(row[col_id]->data()); 
             if (row[col_id]->type() == NULL_OBJ) {
                 cell_value = ""; }
 
