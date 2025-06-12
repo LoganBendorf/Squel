@@ -57,14 +57,14 @@ astring null_object::data() const {
     return astring("NULL_OBJECT");
 }
 null_object* null_object::clone(bool use_arena) const {
-    return new (use_arena) null_object();
+    return new (use_arena) null_object(use_arena);
 }
 
 
 
 
 // operator_object
-operator_object::operator_object(const operator_type type) {
+operator_object::operator_object(const operator_type type, bool use_arena) : object(use_arena) {
     op_type = type;
 }
 astring operator_object::inspect() const {
@@ -77,14 +77,14 @@ astring operator_object::data() const {
     return operator_type_to_astring(op_type);
 }
 operator_object* operator_object::clone(bool use_arena) const {
-    return new (use_arena) operator_object(op_type);
+    return new (use_arena) operator_object(op_type, use_arena);
 }
 
 
 
 
 // Table Info Object
-table_info_object::table_info_object(table_object* set_tab, const avec<size_t>& set_col_ids, const avec<size_t>& set_row_ids, bool clone) {
+table_info_object::table_info_object(table_object* set_tab, const avec<size_t>& set_col_ids, const avec<size_t>& set_row_ids, bool use_arena, bool clone) : object(use_arena) {
     if (in_arena) {
         if (clone) {
             tab = set_tab->clone(in_arena);
@@ -104,12 +104,12 @@ table_info_object::table_info_object(table_object* set_tab, const avec<size_t>& 
     } else {
         tab = set_tab->clone(in_arena);
 
-        col_ids = hvec(size_t);
+        col_ids = hvec_copy(size_t);
         for (const auto& col_id : set_col_ids) {
             col_ids.push_back(col_id);
         }
 
-        row_ids = hvec(size_t);
+        row_ids = hvec_copy(size_t);
         for (const auto& row_id : set_row_ids) {
             row_ids.push_back(row_id);
         }
@@ -149,11 +149,11 @@ astring table_info_object::data() const {
     return "TABLE_INFO_OBJECT";
 }
 table_info_object* table_info_object::clone(bool use_arena) const {
-    return new (use_arena) table_info_object(tab, col_ids, row_ids, true);
+    return new (use_arena) table_info_object(tab, col_ids, row_ids, use_arena, true);
 }
 
 // infix_expression_object
-infix_expression_object::infix_expression_object(operator_object* set_op, object* set_left, object* set_right, bool clone) {
+infix_expression_object::infix_expression_object(operator_object* set_op, object* set_left, object* set_right, bool use_arena, bool clone)  : expression_object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -192,14 +192,14 @@ astring infix_expression_object::data() const {
     return astring("INFIX_EXPRESSION_OBJ");
 }
 infix_expression_object* infix_expression_object::clone(bool use_arena) const {
-    return new (use_arena) infix_expression_object(op, left, right, true);
+    return new (use_arena) infix_expression_object(op, left, right, use_arena, true);
 }
 operator_type infix_expression_object::get_op_type() const {
     return op->op_type;
 }
 
 // prefix_expression_object
-prefix_expression_object::prefix_expression_object(operator_object* set_op, object* set_right, bool clone) {
+prefix_expression_object::prefix_expression_object(operator_object* set_op, object* set_right, bool use_arena, bool clone)  : expression_object(use_arena) {
     if (in_arena) {
         if (clone) {
             op = set_op->clone(in_arena);
@@ -232,23 +232,23 @@ astring prefix_expression_object::data() const {
     return astring("PREFIX_EXPRESSION_OBJ");
 }
 prefix_expression_object* prefix_expression_object::clone(bool use_arena) const {
-    return new (use_arena) prefix_expression_object(op, right, true);
+    return new (use_arena) prefix_expression_object(op, right, use_arena, true);
 }
 operator_type prefix_expression_object::get_op_type() const {
     return op->op_type;
 }
 
 // integer_object
-integer_object::integer_object() {
+integer_object::integer_object(bool use_arena) : object(use_arena) {
     value = 0;
 }
-integer_object::integer_object(int val) {
+integer_object::integer_object(int val, bool use_arena) : object(use_arena) {
     value = val;
 }
-integer_object::integer_object(const std::string& val) {
+integer_object::integer_object(const std::string& val, bool use_arena) : object(use_arena) {
     value = std::stoi(val);
 }
-integer_object::integer_object(const astring& val) {
+integer_object::integer_object(const astring& val, bool use_arena) : object(use_arena) {
     value = astring_to_numeric<int>(val);
 }
 astring integer_object::inspect() const {
@@ -261,20 +261,20 @@ astring integer_object::data() const {
     return numeric_to_astring<int>(value, in_arena); 
 }
 integer_object* integer_object::clone(bool use_arena) const {
-    return new (use_arena) integer_object(value);
+    return new (use_arena) integer_object(value, use_arena);
 }
 
 // index_object
-index_object::index_object() {
+index_object::index_object(bool use_arena) : object(use_arena) {
     value = 0;
 }
-index_object::index_object(size_t val) {
+index_object::index_object(size_t val, bool use_arena) : object(use_arena) {
     value = val;
 }
-index_object::index_object(const std::string& val) {
+index_object::index_object(const std::string& val, bool use_arena) : object(use_arena) {
     value = std::stoull(val);
 }
-index_object::index_object(const astring& val) {
+index_object::index_object(const astring& val, bool use_arena) : object(use_arena) {
     value = astring_to_numeric<size_t>(val);
 }
 astring index_object::inspect() const {
@@ -287,20 +287,20 @@ astring index_object::data() const {
     return numeric_to_astring<size_t>(value, in_arena); 
 }
 index_object* index_object::clone(bool use_arena) const {
-    return new (use_arena) index_object(value);
+    return new (use_arena) index_object(value, use_arena);
 }
 
 // decimal_object
-decimal_object::decimal_object() {
+decimal_object::decimal_object(bool use_arena) : object(use_arena) {
     value = 0;
 }
-decimal_object::decimal_object(double val) {
+decimal_object::decimal_object(double val, bool use_arena) : object(use_arena) {
     value = val;
 }
-decimal_object::decimal_object(const std::string& val) {
+decimal_object::decimal_object(const std::string& val, bool use_arena) : object(use_arena) {
     value = std::stod(val);
 }
-decimal_object::decimal_object(const astring& val) {
+decimal_object::decimal_object(const astring& val, bool use_arena) : object(use_arena) {
     value = astring_to_numeric<double>(val);
 }
 astring decimal_object::inspect() const {
@@ -313,12 +313,12 @@ astring decimal_object::data() const {
     return numeric_to_astring<double>(value, in_arena); 
 }
 decimal_object* decimal_object::clone(bool use_arena) const {
-    return new (use_arena) decimal_object(value);
+    return new (use_arena) decimal_object(value, use_arena);
 }
 
 
 // string_object
-string_object::string_object(const std_and_astring_variant& val) {
+string_object::string_object(const std_and_astring_variant& val, bool use_arena) : object(use_arena)  {
 
     VISIT(val, unwrapped,
         if (in_arena) {
@@ -341,11 +341,11 @@ astring string_object::data() const {
     return value;
 }
 string_object* string_object::clone(bool use_arena) const {
-    return new (use_arena) string_object(value);
+    return new (use_arena) string_object(value, use_arena);
 }
 
 // return_value_object
-return_value_object::return_value_object(object* val, bool clone) {
+return_value_object::return_value_object(object* val, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -372,11 +372,11 @@ astring return_value_object::data() const {
     return value->data();
 }
 return_value_object* return_value_object::clone(bool use_arena) const {
-    return new (use_arena) return_value_object(value, true);
+    return new (use_arena) return_value_object(value, use_arena, true);
 }
 
 // argument_object
-argument_object::argument_object(const std_and_astring_variant& set_name, object* val, bool clone) {
+argument_object::argument_object(const std_and_astring_variant& set_name, object* val, bool use_arena, bool clone) : object(use_arena) {
 
 
     VISIT(set_name, unwrapped,
@@ -412,11 +412,11 @@ astring argument_object::data() const {
     return name;
 }
 argument_object* argument_object::clone(bool use_arena) const {
-    return new (use_arena) argument_object(name, value, true);
+    return new (use_arena) argument_object(name, value, use_arena, true);
 }
 
 // variable_object
-variable_object::variable_object(const std_and_astring_variant& set_name, object* val, bool clone) {
+variable_object::variable_object(const std_and_astring_variant& set_name, object* val, bool use_arena, bool clone) : object(use_arena) {
     
     VISIT(set_name, unwrapped,
         if (in_arena) {
@@ -447,11 +447,11 @@ astring variable_object::data() const {
     return name;
 }
 variable_object* variable_object::clone(bool use_arena) const {
-    return new (use_arena) variable_object(name, value, true);
+    return new (use_arena) variable_object(name, value, use_arena, true);
 }
 
 // boolean_object
-boolean_object::boolean_object(bool val) {
+boolean_object::boolean_object(bool val, bool use_arena) : object(use_arena) {
     value = val;
 }
 astring boolean_object::inspect() const {
@@ -468,12 +468,12 @@ astring boolean_object::data() const {
     return "FALSE";
 }
 boolean_object* boolean_object::clone(bool use_arena) const {
-    return new (use_arena) boolean_object(value);
+    return new (use_arena) boolean_object(value, use_arena);
 }
 
 //zerofill is implicitly unsigned im pretty sure
 // SQL_data_type_object
-SQL_data_type_object::SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool clone) {
+SQL_data_type_object::SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool use_arena, bool clone) : object(use_arena) {
     
     if (set_parameter == nullptr) {
         std::cout << "!!!ERROR!!! SQL data type object constructed with null parameter\n"; }
@@ -518,11 +518,11 @@ astring SQL_data_type_object::data() const {
     return parameter->data();
 }
 SQL_data_type_object* SQL_data_type_object::clone(bool use_arena) const {
-    return new (use_arena) SQL_data_type_object(prefix, data_type, parameter, true);
+    return new (use_arena) SQL_data_type_object(prefix, data_type, parameter, use_arena, true);
 }
 
 // parameter_object
-parameter_object::parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, bool clone) {
+parameter_object::parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, bool use_arena, bool clone) : object(use_arena) {
     
     VISIT(set_name, unwrapped,
         if (in_arena) {
@@ -553,28 +553,46 @@ astring parameter_object::data() const {
     return data_type->data();
 }
 parameter_object* parameter_object::clone(bool use_arena) const {
-    return new (use_arena) parameter_object(name, data_type, true);
+    return new (use_arena) parameter_object(name, data_type, use_arena, true);
 }
 
 // table_detail_object
-table_detail_object::table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool clone) {
-    
+table_detail_object::table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool use_arena, bool clone) : object(use_arena) {
+
+    astring astr;
+    std::string stdstr;
     VISIT(set_name, unwrapped,
-        if (in_arena) {
-            name = astring(unwrapped);
-            if (clone) {
-                data_type = set_data_type->clone(in_arena);
-                default_value = set_default_value->clone(in_arena);
-            } else {
-                data_type = set_data_type;
-                default_value = set_default_value;
-            }
-        } else {
-            name = hstring(unwrapped);
+        astr = astring(unwrapped);
+        stdstr = hstring(unwrapped);
+    );
+    
+    if (in_arena) {
+        name = astr;
+        if (clone) {
             data_type = set_data_type->clone(in_arena);
             default_value = set_default_value->clone(in_arena);
+        } else {
+            data_type = set_data_type;
+            default_value = set_default_value;
         }
-    );
+    } else {
+        name = stdstr;
+
+        bool set_dt_in_heap = !set_data_type->in_arena;
+        bool set_dv_in_heap = !set_default_value->in_arena;
+
+        if (set_dt_in_heap) {
+            data_type = set_data_type;
+        } else {
+            data_type = set_data_type->clone(HEAP);
+        }
+
+        if (set_dv_in_heap) {
+            default_value = set_default_value;
+        } else {
+            default_value = set_default_value->clone(HEAP);
+        }
+    }
 }
 table_detail_object::~table_detail_object() {
     if (!in_arena) {
@@ -598,38 +616,56 @@ astring table_detail_object::data() const {
     return name.data();
 }
 table_detail_object* table_detail_object::clone(bool use_arena) const {
-    return new (use_arena) table_detail_object(name, data_type, default_value, true);
+    return new (use_arena) table_detail_object(name, data_type, default_value, use_arena, true);
 }
 
 // group_object
-group_object::group_object(object* objs, bool clone) { 
+group_object::group_object(object* objs, bool use_arena, bool clone) : object(use_arena) { 
     
     if (in_arena) {
+        elements = avec<object*>(); 
         if (clone) {
-            elements = avec<object*>(objs->clone(in_arena));
+            elements.push_back(objs->clone(in_arena));
         } else {
-            elements = avec<object*>(objs);;
+            elements.push_back(objs);
         }
     } else {
-        elements = hvec(object*);
-        elements.push_back(objs->clone(in_arena));
+        bool obj_in_heap = !objs->in_arena;
+
+        elements = hvec_copy(object*);
+        if (obj_in_heap) {
+            elements.push_back(objs);
+        } else {
+            elements.push_back(objs->clone(in_arena));
+        }
     }
 }
-group_object::group_object(const avec<object*>& objs, bool clone) { 
+group_object::group_object(const avec<object*>& objs, bool use_arena, bool clone) : object(use_arena)  { 
     
     if (in_arena) {
         elements = avec<object*>();
-        for (const auto& obj : objs) {
-            if (clone) {
+        if (clone) {
+            for (const auto& obj : objs) {
                 elements.push_back(obj->clone(in_arena));
             }
-            elements.push_back(obj);
+        } else {
+            for (const auto& obj : objs) {
+                elements.push_back(obj);
+            }
         }
 
     } else {
-        elements = hvec(object*);  
-        for (const auto& obj : objs) {
-            elements.push_back(obj->clone(in_arena));
+        bool vec_in_heap = objs.get_allocator().use_std_alloc;
+
+        elements = hvec_copy(object*);  
+        if (vec_in_heap) {
+            for (const auto& obj : objs) {
+                elements.push_back(obj);
+            }
+        } else {
+            for (const auto& obj : objs) {
+                elements.push_back(obj->clone(in_arena));
+            }
         }
     }
 }
@@ -657,11 +693,11 @@ astring group_object::data() const {
     return "GROUP_OBJ";
 }
 group_object* group_object::clone(bool use_arena) const {
-    return new (use_arena) group_object(elements, true);
+    return new (use_arena) group_object(elements, use_arena, true);
 }
 
 // function_object
-function_object::function_object(const std_and_astring_variant& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool clone) {
+function_object::function_object(const std_and_astring_variant& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool use_arena, bool clone) : object(use_arena) {
     
     VISIT(set_name, unwrapped,
         if (in_arena) {
@@ -709,13 +745,13 @@ astring function_object::data() const {
     return "FUNCTION_OBJECT";
 }
 function_object* function_object::clone(bool use_arena) const {
-    return new (use_arena) function_object(name, parameters, return_type, body, true);
+    return new (use_arena) function_object(name, parameters, return_type, body, use_arena, true);
 }
 
 // evaluted_function_object
 evaluated_function_object::evaluated_function_object(const std_and_astring_variant& set_name, 
     const avec<parameter_object*>& set_parameters, SQL_data_type_object* set_return_type, 
-    block_statement* set_body, bool clone) 
+    block_statement* set_body, bool use_arena, bool clone) : object(use_arena)
 {
     
     VISIT(set_name, unwrapped,
@@ -736,7 +772,7 @@ evaluated_function_object::evaluated_function_object(const std_and_astring_varia
         } else {
             name = hstring(unwrapped);
 
-            parameters = hvec(parameter_object*);
+            parameters = hvec_copy(parameter_object*);
             for (const auto& param : set_parameters) {
                 parameters.push_back(param->clone(in_arena));
             }
@@ -747,7 +783,7 @@ evaluated_function_object::evaluated_function_object(const std_and_astring_varia
     );
 
 }
-evaluated_function_object::evaluated_function_object(function_object* func, const avec<parameter_object*>& new_parameters, bool clone) {
+evaluated_function_object::evaluated_function_object(function_object* func, const avec<parameter_object*>& new_parameters, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         name = astring(func->name);
@@ -773,7 +809,7 @@ evaluated_function_object::evaluated_function_object(function_object* func, cons
         }
     } else {
         name = hstring(func->name);
-        parameters = hvec(parameter_object*);
+        parameters = hvec_copy(parameter_object*);
         for (const auto& param : new_parameters) {
             parameters.push_back(param->clone(in_arena));
         }
@@ -816,11 +852,11 @@ astring evaluated_function_object::data() const {
     return "EVALUATED_FUNCTION_OBJ";
 }
 evaluated_function_object* evaluated_function_object::clone(bool use_arena) const {
-    return new (use_arena) evaluated_function_object(name, parameters, return_type, body, true);
+    return new (use_arena) evaluated_function_object(name, parameters, return_type, body, use_arena, true);
 }
 
 // function_call_object
-function_call_object::function_call_object(const std_and_astring_variant& set_name, group_object* args, bool clone) {
+function_call_object::function_call_object(const std_and_astring_variant& set_name, group_object* args, bool use_arena, bool clone) : object(use_arena) {
     
     VISIT(set_name, unwrapped,
         if (in_arena) {
@@ -855,11 +891,11 @@ astring function_call_object::data() const {
     return "FUNCTION_CALL_OBJ";
 }
 function_call_object* function_call_object::clone(bool use_arena) const {
-    return new (use_arena) function_call_object(name, arguments, true);
+    return new (use_arena) function_call_object(name, arguments, use_arena, true);
 }
 
 // column_object
-column_object::column_object(object* set_name_data_type, bool clone) {
+column_object::column_object(object* set_name_data_type, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -873,7 +909,7 @@ column_object::column_object(object* set_name_data_type, bool clone) {
         default_value = new (in_arena) null_object();
     }
 }
-column_object::column_object(object* set_name_data_type, object* default_val, bool clone) {
+column_object::column_object(object* set_name_data_type, object* default_val, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -908,22 +944,26 @@ astring column_object::data() const {
     return "COLUMN_OBJ";
 }
 column_object* column_object::clone(bool use_arena) const {
-    return new (use_arena) column_object(name_data_type, default_value, true);
+    return new (use_arena) column_object(name_data_type, default_value, use_arena, true);
 }
 
 // column_values_object
-column_values_object::column_values_object(const avec<object*>& set_values, bool clone) {
+column_values_object::column_values_object(const avec<object*>& set_values, bool use_arena, bool clone) : values_wrapper_object(use_arena) {
     
     if (in_arena) {
         values = avec<object*>();
-        for (const auto val : set_values) {
-            if (clone) {
-                values.push_back(val->clone(in_arena)); }
-            values.push_back(val);
+        if (clone) {
+            for (const auto val : set_values) {
+                values.push_back(val->clone(in_arena)); 
+            }
+        } else {
+            for (const auto val : set_values) {
+                values.push_back(val); 
+            }
+            
         }
-        
     } else {
-        values = hvec(object*);
+        values = hvec_copy(object*);
         for (const auto& obj : set_values) {
             values.push_back(obj->clone(in_arena)); }
     }
@@ -955,12 +995,12 @@ astring column_values_object::data() const {
     return "COLUMN_VALUES_OBJ";
 }
 column_values_object* column_values_object::clone(bool use_arena) const {
-    return new (use_arena) column_values_object(values, true);
+    return new (use_arena) column_values_object(values, use_arena, true);
 }
 
 // evaluated_column_object
 evaluated_column_object::evaluated_column_object(const std_and_astring_variant& set_name, SQL_data_type_object* type, 
-                                                 const std_and_astring_variant& set_default_value, bool clone) 
+                                                 const std_and_astring_variant& set_default_value, bool use_arena, bool clone) : values_wrapper_object(use_arena)
 {
     
     VISIT(set_name, unwrapped,
@@ -1008,18 +1048,18 @@ astring evaluated_column_object::data() const {
     return "EVALUATED_COLUMN_OBJ";
 }
 evaluated_column_object* evaluated_column_object::clone(bool use_arena) const {
-    return new (use_arena) evaluated_column_object(name, data_type, default_value, true);
+    return new (use_arena) evaluated_column_object(name, data_type, default_value, use_arena, true);
 }
 
 // error_object
-error_object::error_object() {
+error_object::error_object(bool use_arena) : object(use_arena) {
     if (in_arena) {
         value = astring();
     } else {
         value = hstring("");
     }
 }
-error_object::error_object(const std_and_astring_variant& val) {
+error_object::error_object(const std_and_astring_variant& val, bool use_arena) : object(use_arena) {
     VISIT(val, unwrapped,
         if (in_arena) {
             value = astring(unwrapped);
@@ -1040,7 +1080,7 @@ astring error_object::data() const {
     return value;
 }
 error_object* error_object::clone(bool use_arena) const {
-    return new (use_arena) error_object(value);
+    return new (use_arena) error_object(value, use_arena);
 }
 
 // semicolon_object
@@ -1054,7 +1094,7 @@ astring semicolon_object::data() const {
     return "SEMICOLON_OBJ";
 }
 semicolon_object* semicolon_object::clone(bool use_arena) const {
-    return new (use_arena) semicolon_object();
+    return new (use_arena) semicolon_object(use_arena);
 }
 
 // Star Object
@@ -1068,11 +1108,11 @@ astring star_object::data() const {
     return "STAR_OBJECT";
 }
 star_object* star_object::clone(bool use_arena) const {
-    return new (use_arena) star_object();
+    return new (use_arena) star_object(use_arena);
 }
 
 // Column index object
-column_index_object::column_index_object(object* set_table_name, object* set_column_name, bool clone) {
+column_index_object::column_index_object(object* set_table_name, object* set_column_name, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1103,80 +1143,55 @@ astring column_index_object::data() const {
     return "COLUMN_INDEX_OBJECT";
 }
 column_index_object* column_index_object::clone(bool use_arena) const {
-    return new (use_arena) column_index_object(table_name, column_name, true);
+    return new (use_arena) column_index_object(table_name, column_name, use_arena, true);
 }
 
 
 
-// Table object
-table_object::table_object(const std_and_astring_variant& set_table_name, table_detail_object* set_column_datas, group_object* set_rows, bool clone) {
-    
+// Table object, only use heap
+table_object::table_object(const std_and_astring_variant& set_table_name, table_detail_object* set_column_datas, group_object* set_rows, [[maybe_unused]] bool clone) : object(HEAP) {
+
     VISIT(set_table_name, unwrapped,
-        if (in_arena) {
-            table_name = astring(unwrapped);
-        } else {
-            table_name = hstring(unwrapped);
-        }
+        table_name = hstring(unwrapped);
     );
 
-
-    if (in_arena) {
-        if (clone) {
-            column_datas = avec<table_detail_object*>(set_column_datas->clone(in_arena));
-            rows = avec<group_object*>(set_rows->clone(in_arena));
-        } else {
-            column_datas = avec<table_detail_object*>(set_column_datas);
-            rows = avec<group_object*>(set_rows);
-        }
-
+    column_datas = hvec_copy(table_detail_object*);
+    if (set_column_datas->in_arena) {
+        column_datas.push_back(set_column_datas->clone(HEAP));
     } else {
-        column_datas = hvec(table_detail_object*);
-        column_datas.push_back(set_column_datas->clone(in_arena));
-        
-        rows = hvec(group_object*);
-        rows.push_back(set_rows->clone(in_arena));
+        column_datas.push_back(set_column_datas);
     }
+    
+    rows = hvec_copy(group_object*);
+    if (set_rows->in_arena) {
+        rows.push_back(set_rows->clone(HEAP));
+    } else {
+        rows.push_back(set_rows);
+    }
+
 }
-table_object::table_object(const std_and_astring_variant& set_table_name, const avec<table_detail_object*>& set_column_datas, const avec<group_object*>& set_rows, bool clone) {
+table_object::table_object(const std_and_astring_variant& set_table_name, const avec<table_detail_object*>& set_column_datas, const avec<group_object*>& set_rows, [[maybe_unused]] bool clone) : object(HEAP) {
     
     VISIT(set_table_name, unwrapped,
-        if (in_arena) {
-            table_name = astring(unwrapped);
-        } else {
-            table_name = hstring(unwrapped);
-        }
+        table_name = hstring(unwrapped);
     );
 
-    if (in_arena) {
-
-        if (clone) {
-            column_datas = avec<table_detail_object*>();
-            for (const auto& col_data : set_column_datas) {
-                column_datas.push_back(col_data->clone(in_arena));
-            }
-            rows = avec<group_object*>();
-            for (const auto& row : set_rows) {
-                rows.push_back(row->clone(in_arena));
-            }
+    column_datas = hvec_copy(table_detail_object*);
+    for (const auto& col_data : set_column_datas) {
+        if (col_data->in_arena) {
+            column_datas.push_back(col_data->clone(HEAP));
         } else {
-            column_datas = avec<table_detail_object*>();
-            for (const auto& col_data : set_column_datas) {
-                column_datas.push_back(col_data);
-            }
-            rows = avec<group_object*>();
-            for (const auto& row : set_rows) {
-                rows.push_back(row);
-            }
+            column_datas.push_back(col_data);
         }
+            
+    }
 
-    } else {
-        column_datas = hvec(table_detail_object*);
-        for (const auto& col_data : set_column_datas) {
-            column_datas.push_back(col_data->clone(in_arena));
-        }
-        rows = hvec(group_object*);
-        for (const auto& row : set_rows) {
-            rows.push_back(row->clone(in_arena));
+    rows = hvec_copy(group_object*);
+    for (const auto& row : set_rows) {
+        if (row->in_arena) {
+            rows.push_back(row->clone(HEAP));
+        } else {
+            rows.push_back(row);
         }
     }
 }
@@ -1191,7 +1206,7 @@ table_object::~table_object() {
     }
 }
 astring table_object::inspect() const {
-    astringstream stream;
+    astringstream stream = hstringstream();
     stream << "Table name: " << table_name  << "\n";
 
     stream << "Column data (" << std::to_string(column_datas.size()) << "): ";
@@ -1212,14 +1227,14 @@ object_type table_object::type() const {
     return TABLE_OBJECT;
 }
 astring table_object::data() const {
-    return "TABLE_OBJECT";
+    return hstring("TABLE_OBJECT");
 }
-table_object* table_object::clone(bool use_arena) const {
-    return new (use_arena) table_object(table_name, column_datas, rows, true);
+table_object* table_object::clone([[maybe_unused]] bool use_arena) const {
+    return new (HEAP) table_object(table_name, column_datas, rows, true);
 }
 std::pair<avec<object*>, bool> table_object::get_column(size_t index) const { //!!Expensive, only use if have to, else just use alias
 
-    avec<object*> column = avec<object*>();
+    hvec(object*, column);
 
     if (index >= column_datas.size()) {
         return {column, false}; }
@@ -1316,15 +1331,15 @@ avec<size_t> table_object::get_row_ids() const {
 // Table Aggregate Object
 // Not sure I should modify the object or use constructor to create a new one using the old one 
                                                             // i.e. tabble_aggregate_object(table_aggregate_object* old, table_object* table, bool clone)...
-table_aggregate_object::table_aggregate_object() {
+table_aggregate_object::table_aggregate_object(bool use_arena) : object(use_arena) {
 
     if (in_arena) {
         tables = avec<table_object*>();
     } else {
-        tables = hvec(table_object*);
+        tables = hvec_copy(table_object*);
     }
 }
-table_aggregate_object::table_aggregate_object(const avec<table_object*>& set_tables, bool clone) {
+table_aggregate_object::table_aggregate_object(const avec<table_object*>& set_tables, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1339,7 +1354,7 @@ table_aggregate_object::table_aggregate_object(const avec<table_object*>& set_ta
             }
         }
     } else {
-        tables = hvec(table_object*);
+        tables = hvec_copy(table_object*);
         for (const auto& table : set_tables) {
             tables.push_back(table->clone(in_arena));
         }
@@ -1373,7 +1388,7 @@ astring table_aggregate_object::data() const {
     return "TABLE_AGGREGATE_OBJECT";
 }
 table_aggregate_object* table_aggregate_object::clone(bool use_arena) const {
-    return new (use_arena) table_aggregate_object(tables, true);
+    return new (use_arena) table_aggregate_object(tables, use_arena, true);
 }
 std::pair<size_t, object*> table_aggregate_object::get_col_id(const std_and_astring_variant& column_name) const {
 
@@ -1531,8 +1546,7 @@ table_object* table_aggregate_object::combine_tables(const std_and_astring_varia
         max_cols = std::max(max_cols, table->column_datas.size());
     }
 
-    // avec<table_detail_object*> column_datas = hvec(table_detail_object*);
-    avec<table_detail_object*> column_datas = avec<table_detail_object*>();
+    hvec(table_detail_object*, column_datas);
     column_datas.reserve(total_columns);
 
     for (const auto& table : tables) {
@@ -1541,13 +1555,11 @@ table_object* table_aggregate_object::combine_tables(const std_and_astring_varia
         }
     }
 
-    // avec<group_object*> rows = hvec(group_object*);
-    avec<group_object*> rows = avec<group_object*>();
+    hvec(group_object*, rows);
     rows.reserve(max_rows);
     for (size_t row_index = 0; row_index < max_rows; row_index++) {
 
-        // avec<object*> new_row = hvec(object*);
-        avec<object*> new_row;
+        hvec(object*, new_row);
         new_row.reserve(max_cols);
         for (const auto& table : tables) {
             
@@ -1580,7 +1592,7 @@ void table_aggregate_object::add_table(table_object* table) {
 
 // Node objects
 // Insert into object
-insert_into_object::insert_into_object(object* set_table_name, const avec<object*>& set_fields, object* set_values, bool clone) {
+insert_into_object::insert_into_object(object* set_table_name, const avec<object*>& set_fields, object* set_values, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1603,7 +1615,7 @@ insert_into_object::insert_into_object(object* set_table_name, const avec<object
 
     } else {
         table_name = set_table_name->clone(in_arena);
-        fields = hvec(object*);
+        fields = hvec_copy(object*);
         for (const auto& obj : set_fields) {
             fields.push_back(obj->clone(in_arena));
         }
@@ -1646,11 +1658,11 @@ astring insert_into_object::data() const {
     return "INSERT_INTO_OBJECT";
 }
 insert_into_object* insert_into_object::clone(bool use_arena) const {
-    return new (use_arena) insert_into_object(table_name, fields, values, true);
+    return new (use_arena) insert_into_object(table_name, fields, values, use_arena, true);
 }
 
 // Select object
-select_object::select_object(object* set_value, bool clone) {
+select_object::select_object(object* set_value, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1681,7 +1693,7 @@ select_object* select_object::clone(bool use_arena) const {
 }
 
 // Select from object
-select_from_object::select_from_object(const avec<object*>& set_column_indexes, const avec<object*>& set_clause_chain, bool clone) {
+select_from_object::select_from_object(const avec<object*>& set_column_indexes, const avec<object*>& set_clause_chain, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1707,12 +1719,12 @@ select_from_object::select_from_object(const avec<object*>& set_column_indexes, 
         }
     } else {
 
-        column_indexes = hvec(object*);
+        column_indexes = hvec_copy(object*);
         for (const auto& col_index : set_column_indexes) {
             column_indexes.push_back(col_index->clone(in_arena));
         }
 
-        clause_chain = hvec(object*);
+        clause_chain = hvec_copy(object*);
         for (const auto& clause : set_clause_chain) {
             clause_chain.push_back(clause->clone(in_arena));
         }
@@ -1758,7 +1770,7 @@ astring select_from_object::data() const {
     return "SELECT_FROM_OBJECT";
 }
 select_from_object* select_from_object::clone(bool use_arena) const {
-    return new (use_arena) select_from_object(column_indexes, clause_chain, true);
+    return new (use_arena) select_from_object(column_indexes, clause_chain, use_arena, true);
 }
 
 
@@ -1766,7 +1778,7 @@ select_from_object* select_from_object::clone(bool use_arena) const {
 
 // Statements
 // block_statement
-block_statement::block_statement(const avec<object*>& set_body, bool clone) {
+block_statement::block_statement(const avec<object*>& set_body, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         body = avec<object*>();
@@ -1780,7 +1792,7 @@ block_statement::block_statement(const avec<object*>& set_body, bool clone) {
             }
         }
     } else {
-        body = hvec(object*);  
+        body = hvec_copy(object*);  
         for (const auto& statement : set_body) {
             body.push_back(statement->clone(in_arena));
         }
@@ -1806,11 +1818,11 @@ astring block_statement::data() const {
     return "BLOCK_STATEMENT"; 
 }
 block_statement* block_statement::clone(bool use_arena) const {
-    return new (use_arena) block_statement(body, true);
+    return new (use_arena) block_statement(body, use_arena, true);
 }
 
 // if_statement
-if_statement::if_statement(object* set_condition, block_statement* set_body, object* set_other, bool clone) {
+if_statement::if_statement(object* set_condition, block_statement* set_body, object* set_other, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1870,7 +1882,7 @@ astring end_if_statement::data() const {
     return "END_IF_STATEMENT"; 
 }
 end_if_statement* end_if_statement::clone(bool use_arena) const {
-    return new (use_arena) end_if_statement();
+    return new (use_arena) end_if_statement(use_arena);
 }
 
 // end_statement
@@ -1888,7 +1900,7 @@ end_statement* end_statement::clone(bool use_arena) const {
 }
 
 // return_statement
-return_statement::return_statement(object* expr, bool clone) {
+return_statement::return_statement(object* expr, bool use_arena, bool clone) : object(use_arena) {
     
     if (in_arena) {
         if (clone) {
@@ -1918,7 +1930,7 @@ astring return_statement::data() const {
     return "RETURN_STATEMENT"; 
 }
 return_statement* return_statement::clone(bool use_arena) const {
-    return new (use_arena) return_statement(expression, true);
+    return new (use_arena) return_statement(expression, use_arena, true);
 }
 
 
@@ -1926,7 +1938,7 @@ return_statement* return_statement::clone(bool use_arena) const {
 // CUSTOM
 
 // assert_object
-assert_object::assert_object(object* expr, size_t set_line, bool clone) {
+assert_object::assert_object(object* expr, size_t set_line, bool use_arena, bool clone) : object(use_arena) {
     
     line = set_line;
     if (in_arena) {

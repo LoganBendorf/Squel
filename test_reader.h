@@ -2,5 +2,5 @@
 
 #include "pch.h"
 
-std::vector<struct test> init_read_test();
-std::string read_test(struct test test, size_t index);
+std::vector<struct test_container> init_read_test();
+test read_test(struct test_container test, size_t index);

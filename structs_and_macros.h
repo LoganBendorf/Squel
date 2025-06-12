@@ -15,9 +15,14 @@ typedef struct display_table {
     table_info_object* table_info;
 } display_table;
 
-struct test {
+struct test_container {
     std::string folder_name;
     std::vector<std::string> test_paths;
     int max_tests = 0;
     int current_test_num = 0;
+};
+
+struct test {
+    std::string text;
+    bool except_fail;
 };

@@ -11,6 +11,12 @@
 #include "structs_and_macros.h" // For table
 
 
+/*
+    UP Clone (hopefully)
+std::unique_ptr<Base> clone() const override {
+    return std::unique_ptr<Derived(new Dervied(my_foo, my_bar))); 
+}
+*/
 
 
 
@@ -80,8 +86,13 @@ astring numeric_to_astring(T value, bool in_arena = false) {
 
 
 class object {
+    public:
+    bool in_arena;
     protected:
     static arena<object> object_arena_alias; // all arenas are alias for the global one
+    explicit object(bool use_arena) noexcept
+    : in_arena(use_arena) {}
+
 
     public:
     virtual astring inspect() const = 0;  
@@ -90,33 +101,20 @@ class object {
     virtual object* clone(bool use_arena) const = 0;    
     virtual ~object() noexcept = default; 
     
-    
-    // static void* operator new(std::size_t size);
-    // static void* operator new(std::size_t size, bool use_arena);
-    // static void  operator delete([[maybe_unused]] void* ptr, [[maybe_unused]] bool b) noexcept;
-    // static void  operator delete(void* ptr) noexcept;
-    // static void* operator new[](std::size_t size);
-    // static void  operator delete[]([[maybe_unused]] void* p) noexcept;
 
     static void* operator new(std::size_t size, bool use_arena) {
         object* obj;
         if (use_arena) {
             obj = object_arena_alias.allocate(size, alignof(object));
-            if (obj) { 
-                obj->in_arena = true; }
         } else {
-            auto heap_arena = arena<object>{HEAP};
-            obj = heap_arena.allocate(size, alignof(object));
-            if (obj) { 
-                obj->in_arena = false;}
+            obj = static_cast<object*>(::operator new(size));
         }
+
         return obj;
     }
 
     static void* operator new(std::size_t size) {
         object* obj = object_arena_alias.allocate(size, alignof(object));
-        if (obj) { 
-            obj->in_arena = true; }
         return obj;
     }
     
@@ -160,15 +158,14 @@ class object {
         // This is simplified - in practice you'd want to track this
         ::operator delete[](ptr);
     }
-
-    public:
-    bool in_arena = true;
     
 };
 
 class null_object : public object {
 
     public:
+    explicit null_object(bool use_arena = true) noexcept : object(use_arena) {};
+
     astring inspect() const override;
     object_type type() const override;
     astring data() const override;
@@ -177,7 +174,7 @@ class null_object : public object {
 
 class operator_object : public object {
     public:
-    operator_object(const operator_type type);
+    operator_object(const operator_type type, bool use_arena = true);
 
     astring inspect() const override;
     object_type type() const override;
@@ -190,14 +187,15 @@ class operator_object : public object {
 
 class table_object;
 class table_info_object : public object {
+
     public:
-    table_info_object(table_object* set_tab, const avec<size_t>& set_col_ids, const avec<size_t>& set_row_ids, bool clone = false);
+    table_info_object(table_object* set_tab, const avec<size_t>& set_col_ids, const avec<size_t>& set_row_ids, bool use_arena = true, [[maybe_unused]] bool clone = false);
     ~table_info_object();
 
     astring inspect() const override;
     object_type type() const override;
     astring data() const override;
-    table_info_object* clone(bool use_arena) const override;
+    table_info_object* clone[[maybe_unused]] (bool use_arena) const override;
 
     public:
     table_object* tab;
@@ -209,6 +207,7 @@ class table_info_object : public object {
 
 class expression_object : public object {
     public:
+    explicit expression_object(bool use_arena = true) noexcept : object(use_arena) {};
     virtual ~expression_object() = default;
 
     virtual astring inspect() const = 0;
@@ -224,7 +223,7 @@ class expression_object : public object {
 class infix_expression_object : public expression_object {
 
     public:
-    infix_expression_object(operator_object* set_op, object* set_left, object* set_right, bool clone = false);
+    infix_expression_object(operator_object* set_op, object* set_left, object* set_right, bool use_arena = true, bool clone = false);
     ~infix_expression_object();
     
     astring inspect() const override;
@@ -243,7 +242,7 @@ class infix_expression_object : public expression_object {
 class prefix_expression_object : public expression_object {
 
     public:
-    prefix_expression_object(operator_object* set_op, object* set_right, bool clone = false);
+    prefix_expression_object(operator_object* set_op, object* set_right, bool use_arena = true, bool clone = false);
     ~prefix_expression_object();
 
     astring inspect() const override;
@@ -261,10 +260,10 @@ class prefix_expression_object : public expression_object {
 class integer_object : public object {
 
     public:
-    integer_object();
-    integer_object(int val);
-    integer_object(const std::string& val);
-    integer_object(const astring& val);
+    integer_object(bool use_arena = true);
+    integer_object(int val, bool use_arena = true);
+    integer_object(const std::string& val, bool use_arena = true);
+    integer_object(const astring& val, bool use_arena = true);
 
     astring inspect() const override;
     object_type type() const override;
@@ -278,10 +277,10 @@ class integer_object : public object {
 class index_object : public object {
 
     public:
-    index_object();
-    explicit index_object(size_t val);
-    index_object(const std::string& val);
-    index_object(const astring& val);
+    index_object(bool use_arena = true);
+    explicit index_object(size_t val, bool use_arena = true);
+    index_object(const std::string& val, bool use_arena = true);
+    index_object(const astring& val, bool use_arena = true);
 
     astring inspect() const override;
     object_type type() const override;
@@ -295,10 +294,10 @@ class index_object : public object {
 class decimal_object : public object {
 
     public:
-    decimal_object();
-    decimal_object(double val);
-    decimal_object(const std::string& val);
-    decimal_object(const astring& val);
+    decimal_object(bool use_arena = true);
+    decimal_object(double val, bool use_arena = true);
+    decimal_object(const std::string& val, bool use_arena = true);
+    decimal_object(const astring& val, bool use_arena = true);
 
     astring inspect() const override;
     object_type type() const override;
@@ -312,7 +311,7 @@ class decimal_object : public object {
 class string_object : public object {
 
     public:
-    string_object(const std_and_astring_variant& val);
+    string_object(const std_and_astring_variant& val, bool use_arena = true);
     ~string_object();
 
     astring inspect() const override;
@@ -327,7 +326,7 @@ class string_object : public object {
 class return_value_object : public object {
 
     public:
-    return_value_object(object* val, bool clone = false);
+    return_value_object(object* val, bool use_arena = true, bool clone = false);
     ~return_value_object();
 
     astring inspect() const override;
@@ -342,7 +341,7 @@ class return_value_object : public object {
 class argument_object : public object {
 
     public:
-    argument_object(const std_and_astring_variant& set_name, object* val, bool clone = false);
+    argument_object(const std_and_astring_variant& set_name, object* val, bool use_arena = true, bool clone = false);
     ~argument_object();
 
     astring inspect() const override;
@@ -359,7 +358,7 @@ class argument_object : public object {
 class variable_object : public object {
 
     public:
-    variable_object(const std_and_astring_variant& set_name, object* val, bool clone = false);
+    variable_object(const std_and_astring_variant& set_name, object* val, bool use_arena = true, bool clone = false);
     ~variable_object();
 
     astring inspect() const override;
@@ -375,7 +374,7 @@ class variable_object : public object {
 class boolean_object : public object {
 
     public:
-    boolean_object(bool val);
+    boolean_object(bool val, bool use_arena = true);
 
     astring inspect() const override;
     object_type type() const override;
@@ -390,7 +389,7 @@ class boolean_object : public object {
 class SQL_data_type_object: public object {
 
     public:
-    SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool clone = false);
+    SQL_data_type_object(token_type set_prefix, token_type set_data_type, object* set_parameter, bool use_arena = true, bool clone = false);
     ~SQL_data_type_object();
 
     astring inspect() const override;
@@ -407,7 +406,7 @@ class SQL_data_type_object: public object {
 class parameter_object : public object {
 
     public:
-    parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, bool clone = false);
+    parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, bool use_arena = true, bool clone = false);
     ~parameter_object();
 
     astring inspect() const override;
@@ -423,7 +422,7 @@ class parameter_object : public object {
 class table_detail_object : public object {
 
     public:
-    table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool clone = false);
+    table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value, bool use_arena = true, bool clone = false);
     ~table_detail_object();
 
     astring inspect() const override;
@@ -440,8 +439,8 @@ class table_detail_object : public object {
 class group_object : public object {
 
     public:
-    group_object(object* objs, bool clone = false);
-    group_object(const avec<object*>& objs, bool clone = false);
+    group_object(object* objs, bool use_arena = true, bool clone = false);
+    group_object(const avec<object*>& objs, bool use_arena = true, bool clone = false);
     ~group_object();
 
     astring inspect() const override;
@@ -458,7 +457,7 @@ class block_statement;
 class function_object : public object {
 
     public:
-    function_object(const std_and_astring_variant& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool clone = false);
+    function_object(const std_and_astring_variant& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool use_arena = true, bool clone = false);
     ~function_object();
 
     astring inspect() const override;
@@ -476,8 +475,8 @@ class function_object : public object {
 class evaluated_function_object : public object {
 
     public:
-    evaluated_function_object(const std_and_astring_variant& set_name, const avec<parameter_object*>& set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool clone = false);
-    evaluated_function_object(function_object* func, const avec<parameter_object*>& new_parameters, bool clone = false);
+    evaluated_function_object(const std_and_astring_variant& set_name, const avec<parameter_object*>& set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body, bool use_arena = true, bool clone = false);
+    evaluated_function_object(function_object* func, const avec<parameter_object*>& new_parameters, bool use_arena = true, bool clone = false);
     ~evaluated_function_object();
 
     astring inspect() const override;
@@ -495,7 +494,7 @@ class evaluated_function_object : public object {
 class function_call_object : public object {
 
     public:
-    function_call_object(const std_and_astring_variant& set_name, group_object* args, bool clone = false);
+    function_call_object(const std_and_astring_variant& set_name, group_object* args, bool use_arena = true, bool clone = false);
     ~function_call_object();
 
     astring inspect() const override;
@@ -512,8 +511,8 @@ class function_call_object : public object {
 class column_object: public object {
 
     public:
-    column_object(object* name_data_type, bool clone = false);
-    column_object(object* name_data_type, object* default_val, bool clone = false);
+    column_object(object* name_data_type, bool use_arena = true, bool clone = false);
+    column_object(object* name_data_type, object* default_val, bool use_arena = true, bool clone = false);
     ~column_object();
 
     astring inspect() const override;
@@ -529,13 +528,14 @@ class column_object: public object {
 class values_wrapper_object : public object {
 
     public:
+    explicit values_wrapper_object(bool use_arena = true) noexcept : object(use_arena) {};
     avec<object*> values;
 };
 
 class column_values_object: public values_wrapper_object {
 
     public:
-    column_values_object(const avec<object*>& set_values, bool clone = false);
+    column_values_object(const avec<object*>& set_values, bool use_arena = true, bool clone = false);
     ~column_values_object();
 
     astring inspect() const override;
@@ -549,7 +549,7 @@ class evaluated_column_object: public object {
 
     public:
     evaluated_column_object(const std_and_astring_variant& set_name, SQL_data_type_object* type, 
-                            const std_and_astring_variant& set_default_value, bool clone = false);
+                            const std_and_astring_variant& set_default_value, bool use_arena = true, bool clone = false);
     ~evaluated_column_object();
 
     astring inspect() const override;
@@ -566,8 +566,8 @@ class evaluated_column_object: public object {
 class error_object : public object {
 
     public:
-    error_object();
-    error_object(const std_and_astring_variant& val);
+    error_object(bool use_arena = true);
+    error_object(const std_and_astring_variant& val, bool use_arena = true);
     ~error_object();
 
     astring inspect() const override;
@@ -582,6 +582,9 @@ class error_object : public object {
 class semicolon_object : public object {
 
     public:
+    explicit semicolon_object(bool use_arena = true) noexcept : object(use_arena) {};
+
+
     astring inspect() const override;
     object_type type() const override;
     astring data() const override;
@@ -591,6 +594,8 @@ class semicolon_object : public object {
 class star_object : public object {
 
     public:
+    explicit star_object(bool use_arena = true) noexcept : object(use_arena) {};
+
     astring inspect() const override;
     object_type type() const override;
     astring data() const override;
@@ -599,7 +604,7 @@ class star_object : public object {
 
 class column_index_object : public object {
     public:
-    column_index_object(object* set_table_name, object* set_column_name, bool clone = false);
+    column_index_object(object* set_table_name, object* set_column_name, bool use_arena = true, bool clone = false);
     ~column_index_object();
 
     astring inspect() const override;
@@ -613,6 +618,26 @@ class column_index_object : public object {
 };
 
 class table_object : public object {
+
+    public:
+    static void* operator new(std::size_t size, [[maybe_unused]] bool use_arena) {
+        return ::operator new(size);
+        // auto heap_arena = arena<object>{HEAP};
+        // return heap_arena.allocate(size, alignof(object));
+    }
+
+    static void* operator new(std::size_t size) {
+        return ::operator new(size);
+    }
+
+    static void operator delete(void* ptr) noexcept {
+        // if (!ptr) return;
+        
+        // auto heap_arena = arena<object>{HEAP};
+        // heap_arena.deallocate(static_cast<object*>(ptr));
+        ::operator delete(ptr);
+    }
+
     public:
     table_object(const std_and_astring_variant& set_table_name, table_detail_object* set_column_datas, group_object* set_rows, bool clone = false);
     table_object(const std_and_astring_variant& set_table_name, const avec<table_detail_object*>& set_column_datas, const avec<group_object*>& set_rows, bool clone = false);
@@ -637,14 +662,16 @@ class table_object : public object {
 
     public:
     astring table_name;
-    avec<table_detail_object*> column_datas;
-    avec<group_object*> rows;
+    // avec<table_detail_object*> column_datas;
+    // avec<group_object*> rows;
+    hvec(table_detail_object*, column_datas);
+    hvec(group_object*, rows);
 };
 
 class table_aggregate_object : public object {
     public:
-    table_aggregate_object();
-    table_aggregate_object(const avec<table_object*>& set_tables, bool clone = false);
+    table_aggregate_object(bool use_arena = true);
+    table_aggregate_object(const avec<table_object*>& set_tables, bool use_arena = true, bool clone = false);
     ~table_aggregate_object();
 
     astring inspect() const override;
@@ -669,7 +696,7 @@ class table_aggregate_object : public object {
 class insert_into_object : public object {
 
     public:
-    insert_into_object(object* set_table_name, const avec<object*>& set_fields, object* set_values, bool clone = false);
+    insert_into_object(object* set_table_name, const avec<object*>& set_fields, object* set_values, bool use_arena = true, bool clone = false);
     ~insert_into_object();
 
     astring inspect() const override;
@@ -686,7 +713,7 @@ class insert_into_object : public object {
 class select_object : public object {
     
     public:
-    select_object(object* set_value, bool clone = false);
+    select_object(object* set_value, bool use_arena = true, bool clone = false);
     ~select_object();
 
     astring inspect() const override;
@@ -701,7 +728,7 @@ class select_object : public object {
 class select_from_object : public object {
     
     public:
-    select_from_object(const avec<object*>& set_column_names, const avec<object*>& set_clause_chain, bool clone = false);
+    select_from_object(const avec<object*>& set_column_names, const avec<object*>& set_clause_chain, bool use_arena = true, bool clone = false);
     ~select_from_object();
 
     astring inspect() const override;
@@ -719,7 +746,7 @@ class select_from_object : public object {
 class block_statement : public object {
 
     public:
-    block_statement(const avec<object*>& set_body, bool clone = false);
+    block_statement(const avec<object*>& set_body, bool use_arena = true, bool clone = false);
     ~block_statement();
 
     astring inspect() const override;
@@ -734,7 +761,7 @@ class block_statement : public object {
 class if_statement : public object {
 
     public:
-    if_statement(object* set_condition, block_statement* set_body, object* set_other, bool clone = false);
+    if_statement(object* set_condition, block_statement* set_body, object* set_other, bool use_arena = true, bool clone = false);
     ~if_statement();
 
     astring inspect() const override;
@@ -751,6 +778,9 @@ class if_statement : public object {
 class end_if_statement : public object {
 
     public:
+    explicit end_if_statement(bool use_arena = true) noexcept : object(use_arena) {};
+
+
     astring inspect() const override;
     object_type type() const override;
     astring data() const override;
@@ -760,6 +790,9 @@ class end_if_statement : public object {
 class end_statement : public object {
 
     public:
+    explicit end_statement(bool use_arena = true) noexcept : object(use_arena) {};
+
+
     astring inspect() const override;
     object_type type() const override;
     astring data() const override;
@@ -769,7 +802,7 @@ class end_statement : public object {
 class return_statement : public object {
 
     public:
-    return_statement(object* expr, bool clone = false);
+    return_statement(object* expr, bool use_arena = true, bool clone = false);
     ~return_statement();
     
     astring inspect() const override;
@@ -787,8 +820,8 @@ class return_statement : public object {
 class assert_object : public object {
 
     public:
-    assert_object(object* , bool ) = delete; // Produces weird error but stops stupid conversions
-    explicit assert_object(object* expr, size_t set_line, bool clone = false);
+    assert_object(object* , size_t, bool ) = delete; // Produces weird error but stops stupid conversions
+    explicit assert_object(object* expr, size_t set_line, bool use_arena = true, bool clone = false);
     ~assert_object();
     
     astring inspect() const override;

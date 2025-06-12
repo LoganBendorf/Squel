@@ -8,7 +8,7 @@
 #include "token.h"
 #include "structs_and_macros.h"
 #include "environment.h"
-
+#include "arena_aliases.h"
 
 extern std::vector<std::string> errors;
 extern display_table display_tab;
@@ -22,7 +22,7 @@ static token prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
 
 static size_t g_loop_count = 0;
 
-static std::vector<table_object*> global_tables;
+static hvec(table_object*, global_tables);
 static std::vector<std::string> table_names;
 static std::vector<std::string> function_names;
 static std::vector<evaluated_function_object*> global_functions;
@@ -186,7 +186,7 @@ static bool is_table_name(const std_and_astring_variant& name) {
     return false;
 }
 
-void parser_init(std::vector<token> toks, std::vector<evaluated_function_object*> global_funcs, std::vector<table_object*> global_tabs) {
+void parser_init(std::vector<token> toks, std::vector<evaluated_function_object*> global_funcs, avec<table_object*> global_tabs) {
     global_functions = global_funcs;
     global_tables = global_tabs;
 

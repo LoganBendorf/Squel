@@ -18,7 +18,7 @@ static std::vector<node*> nodes;
 
 extern std::vector<std::string> warnings;
 
-static std::vector<table_object*> s_tables;
+static hvec(table_object*, s_tables);
 static std::vector<evaluated_function_object*> s_functions;
 
 static void eval_function(function* func, environment* env);
@@ -66,16 +66,13 @@ static std::pair<object*, ret_code> convert_table_info_to_value(table_info_objec
     errors.push_back(error.str());  \
     break                           \
 
-environment* eval_init(std::vector<node*> nds, std::vector<evaluated_function_object*> g_functions, std::vector<table_object*> g_tables) {
+environment* eval_init(std::vector<node*> nds, std::vector<evaluated_function_object*> g_functions, avec<table_object*> g_tables) {
     nodes = nds;
     s_functions.clear();
     for(const auto& func : g_functions) {
         s_functions.push_back(func->clone(ARENA));
     }
-    s_tables.clear();
-    for(const auto& tab : g_tables) {
-        s_tables.push_back(tab->clone(ARENA));
-    }
+    s_tables = g_tables;
     return new environment();
 }
 
@@ -99,7 +96,7 @@ static void configure_print_functions(object* result) {
     print_table(); // CMD line print, QT will do it's own thing in main
 }
 
-std::pair<std::vector<evaluated_function_object*>, std::vector<table_object*>> eval(environment* env) {
+std::pair<std::vector<evaluated_function_object*>, avec<table_object*>> eval(environment* env) {
     
     for (const auto& node : nodes) {
 

@@ -10,13 +10,13 @@
 
 extern std::vector<std::string> errors;
 
-std::vector<struct test> init_read_test() {
+std::vector<struct test_container> init_read_test() {
     const std::string path = "tests";
-    std::vector<struct test> tests;
+    std::vector<struct test_container> tests;
 
     for (const auto & entry: std::filesystem::directory_iterator(path)) {
         if (entry.is_directory()) {
-            struct test test;
+            struct test_container test;
             test.folder_name = entry.path().lexically_relative("tests");
             for (const auto & sub_folder_entry: std::filesystem::directory_iterator(entry.path())){
                 test.test_paths.push_back(sub_folder_entry.path().lexically_relative("tests"));
@@ -49,10 +49,10 @@ std::vector<struct test> init_read_test() {
     return tests;
 }
 
-std::string read_test(struct test test, size_t index) {
+struct test read_test(struct test_container test, size_t index) {
     
     if (test.current_test_num == test.max_tests) {
-        return "NO MORE TESTS!!!!";
+        return {"NO MORE TESTS!!!!", false};
     }
 
     std::ifstream file;
@@ -69,6 +69,20 @@ std::string read_test(struct test test, size_t index) {
 
     test.current_test_num++;
 
-    return file_contents;
+    // find [[expect_fail]]
+    bool expect_fail = false;
+    constexpr auto expect_str = "[[expect_fail]]";
+    size_t pos = file_contents.find('\n');
+    std::string firstLine = (pos == std::string::npos) ? file_contents : file_contents.substr(0, pos);
+    if (firstLine == expect_str) {
+        expect_fail = true;
+        if (pos == std::string::npos) {
+            file_contents.clear();
+        } else {
+            file_contents.erase(0, pos + 1);
+        }
+    }
+
+    return {file_contents, expect_fail};
 
 }

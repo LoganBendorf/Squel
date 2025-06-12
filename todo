@@ -1,5 +1,20 @@
-fix node and environment memory, make it like object's
 
-add more check for ALTER
+# Saving to a file
+    Reading from a file
 
-reorder table columns for alignment
+# Automatic testing 
+
+# Add more checks for ALTER
+
+# Look into reordering table columns for alignment
+    Look into database storage strategies
+
+# Add the ablity to add rules to columns
+# Add user priveleges? E.g. User Bob can only change columns in Email table with name Bob
+
+1. Read about allocators
+2. Fix allocator (Use segragator, Page allocator then Stack allocator then fallback to Malloc)
+3. Make everthing Unique Pointer and Const. (Probably just use default destructors as well)
+    Every object should be moved, nothing need to be copied.
+    No object needs to be modified.
+4. Split Evaluator into Evaluator and Executor

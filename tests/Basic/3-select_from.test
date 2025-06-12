@@ -1,9 +1,9 @@
-CREATE TABLE select_from_table_test (
+CREATE TABLE myTable (
     hello INT,
     goodbye INT
 );
 
-INSERT INTO select_from_table_test (hello, goodbye)
+INSERT INTO myTable (hello, goodbye)
 VALUES (1, 2);
 
-SELECT * FROM select_from_table_test;
+SELECT * FROM myTable;

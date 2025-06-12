@@ -1,6 +1,7 @@
 
 #include "pch.h"
 
+#include "arena_aliases.h"
 #include "structs_and_macros.h"
 #include "test_reader.h"
 #include "lexer.h"
@@ -15,14 +16,14 @@ extern arena<bool> arena_inst;
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
-static std::vector<table_object*> g_tables;
+static hvec(table_object*, g_tables);
 static std::vector<evaluated_function_object*> g_functions;
 
 std::string input = "";
 
 display_table display_tab = {false, nullptr};
 
-std::vector<struct test> tests;
+std::vector<struct test_container> tests;
 
 // CURRENTLY WORKING ON:
 // CREATE TABLE
@@ -191,7 +192,7 @@ int main (int argc, char* argv[]) {
         tests = init_read_test();
 
         // Alphabetical sort
-        std::sort(tests.begin(), tests.end(), [](const test& a, const test& b) {
+        std::sort(tests.begin(), tests.end(), [](const test_container& a, const test_container& b) {
             return a.folder_name < b.folder_name;
         });
     
@@ -202,7 +203,7 @@ int main (int argc, char* argv[]) {
 
         // FOLDER BUTTONS
         for (size_t i = 0; i < tests.size(); i++) {
-            struct test test = tests[i];
+            struct test_container test = tests[i];
             QPushButton* folder_show_button = new QPushButton(test.folder_name.c_str());
             folder_show_button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); 
             scrollLayout->addWidget(folder_show_button);
@@ -235,16 +236,16 @@ int main (int argc, char* argv[]) {
                 size_t test_index = j;
 
                 QObject::connect(test_start_button, &QPushButton::clicked, [&, test, test_index]() {\
-                    input = read_test(test, test_index);
+                    const auto& [test_input, expect_fail] = read_test(test, test_index);
+                    input = test_input;
+
                     current_test_label->setText(QString::fromStdString(input));
 
                     if (input.length() > 2000) {
-                        std::cout << "INPUT TOO LONG >:(\n";
-                        return;}
+                        std::cout << "INPUT TOO LONG >:(\n"; return;}
 
                     if (input.length() == 0) {
-                        std::cout << "No input\n";
-                        return;}
+                        std::cout << "No input\n"; return;}
             
                     std::cout << "PRINTING INPUT -----------------\n";
                     std::cout << "'" << input << "'\n";
@@ -340,7 +341,7 @@ int main (int argc, char* argv[]) {
         }
         clear_g_tables();
         for (const auto& tab : tables) {
-            g_tables.push_back(tab->clone(HEAP));
+            g_tables.push_back(tab);
         }
 
         std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";

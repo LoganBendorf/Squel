@@ -167,7 +167,7 @@ create_table::create_table(object* set_table_name, const avec<table_detail_objec
     } else {
         table_name = set_table_name->clone(in_arena);
 
-        details = hvec(table_detail_object*);
+        details = hvec_copy(table_detail_object*);
         for (const auto& detail : set_details) {
             details.push_back(detail->clone(in_arena));
         }

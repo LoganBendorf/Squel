@@ -8,6 +8,7 @@
 #include <functional>
 #include <algorithm>
 #include <numeric>
+#include <cstdlib>
 
 #include <qt5/QtWidgets/qapplication.h>
 //#include <QApplication>

@@ -2,12 +2,16 @@
 QT += widgets
 TEMPLATE = app
 
-INCLUDEPATH += $$PWD/Arena
-SOURCES += evaluator.cpp object.cpp parser.cpp main.cpp environment.cpp helpers.cpp node.cpp lexer.cpp print.cpp test_reader.cpp
-SOURCES += Arena/arena.cpp
-HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h
-HEADERS += Arena/arena.h  Arena/arena_aliases.h  Arena/arena_string.h
-TARGET = squel
+INCLUDEPATH += ../Arena
+INCLUDEPATH += ..
+DEPENDPATH += ../Arena
+DEPENDPATH += ..
+SOURCES += save.cpp
+SOURCES += ../evaluator.cpp ../object.cpp ../parser.cpp ../environment.cpp ../helpers.cpp ../node.cpp ../lexer.cpp ../print.cpp ../test_reader.cpp
+SOURCES += ../Arena/arena.cpp
+HEADERS += ../pch.h ../evaluator.h   ../helpers.h   ../lexer.h ../node.h ../object.h ../parser.h ../pch.h ../print.h ../structs_and_macros.h ../test_reader.h ../token.h ../environment.h
+HEADERS += ../Arena/arena.h  ../Arena/arena_aliases.h  ../Arena/arena_string.h
+TARGET = test
 
 DESTDIR = build
 OBJECTS_DIR = build
@@ -67,10 +71,10 @@ QMAKE_CXXFLAGS += -pedantic-errors
 # Debug flags
 CONFIG += debug
 #QMAKE_CXXFLAGS += -g
-QMAKE_CXXFLAGS += -g3
-QMAKE_CXXFLAGS += -fno-omit-frame-pointer 
-QMAKE_CXXFLAGS += -funwind-tables
-QMAKE_CXXFLAGS += -ggdb3
+#QMAKE_CXXFLAGS += -g3
+#QMAKE_CXXFLAGS += -fno-omit-frame-pointer 
+#QMAKE_CXXFLAGS += -funwind-tables
+#QMAKE_CXXFLAGS += -ggdb3
 
 # Compiler profiler
 #QMAKE_CXXFLAGS += -ftime-report

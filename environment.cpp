@@ -16,8 +16,8 @@ environment::environment() {
         functions = avec<evaluated_function_object*>();
         variables = avec<variable_object*>();
     } else {
-        functions = hvec(evaluated_function_object*);
-        variables = hvec(variable_object*);
+        functions = hvec_copy(evaluated_function_object*);
+        variables = hvec_copy(variable_object*);
     }
 }
 
@@ -29,8 +29,8 @@ environment::environment(environment* par) {
         functions = avec<evaluated_function_object*>();
         variables = avec<variable_object*>();
     } else {
-        functions = hvec(evaluated_function_object*);
-        variables = hvec(variable_object*);
+        functions = hvec_copy(evaluated_function_object*);
+        variables = hvec_copy(variable_object*);
     }
 
 }
