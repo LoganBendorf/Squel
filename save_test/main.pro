@@ -2,15 +2,14 @@
 QT += widgets
 TEMPLATE = app
 
-INCLUDEPATH += ../Arena
+INCLUDEPATH += ../Allocators
 INCLUDEPATH += ..
-DEPENDPATH += ../Arena
+DEPENDPATH += ../Allocators
 DEPENDPATH += ..
 SOURCES += save.cpp
 SOURCES += ../evaluator.cpp ../object.cpp ../parser.cpp ../environment.cpp ../helpers.cpp ../node.cpp ../lexer.cpp ../print.cpp ../test_reader.cpp
-SOURCES += ../Arena/arena.cpp
 HEADERS += ../pch.h ../evaluator.h   ../helpers.h   ../lexer.h ../node.h ../object.h ../parser.h ../pch.h ../print.h ../structs_and_macros.h ../test_reader.h ../token.h ../environment.h
-HEADERS += ../Arena/arena.h  ../Arena/arena_aliases.h  ../Arena/arena_string.h
+HEADERS += ../Allocators/allocators.h  ../Allocators/allocator_aliases.h  ../Allocators/allocator_string.h
 TARGET = test
 
 DESTDIR = build

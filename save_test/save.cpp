@@ -1,7 +1,8 @@
 
-#include "arena_aliases.h"
+
+#include "allocators.h"
+#include "allocator_aliases.h"
 #include "structs_and_macros.h"
-#include "arena.h"
 #include "object.h"
 
 #include "token.h"
@@ -9,12 +10,12 @@
 #include <fstream>  // std::ofstream
 #include <iostream>
 
-extern arena<bool> arena_inst;
+extern main_alloc<bool> arena_inst;
 
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
-static hvec(table_object*, g_tables);
+static avec<table_object*> g_tables;
 static std::vector<evaluated_function_object*> g_functions;
 
 std::string input = "";
@@ -37,7 +38,7 @@ int main() {
 
     constexpr size_t size = 1 << 18;
     std::byte stack_buffer[size];
-    arena_inst.init(stack_buffer, size);
+    main_alloc<void>::allocate_stack_memory(stack_buffer, size);
 
 
     // SQL_data_type_object* type = new SQL_data_type_object(NONE, INT, new integer_object(11)); // some nonsense here
@@ -56,18 +57,20 @@ int main() {
     // clear_g_tables();
     // arena_inst.destroy();
 
-    SQL_data_type_object* type = new SQL_data_type_object(NONE, INT, new integer_object(11));
-    table_detail_object* detail = new table_detail_object("column_name", type, new null_object());
+    // auto type = UP<SQL_data_type_object>(new SQL_data_type_object(NONE, INT, new integer_object(11)));
+    // auto detail = UP<table_detail_object>(new table_detail_object("column_name", type.get(), new null_object()));
+    auto type = new SQL_data_type_object(NONE, INT, new integer_object(11));
+    auto detail = new table_detail_object("column_name", type, new null_object());
     
     // Test cloning without table_object
     std::cout << "About to clone detail..." << std::endl;
-    table_detail_object* cloned_detail = detail->clone(HEAP); // Clone to heap
-    std::cout << "Cloned detail, in_arena=" << cloned_detail->in_arena << std::endl;
+    table_detail_object* cloned_detail = detail->clone(); // Clone to heap
+    // std::cout << "Cloned detail, in_arena=" << cloned_detail->in_arena << std::endl;
     
     // Clean up the clone
     delete cloned_detail;
     
-    arena_inst.destroy();
+    main_alloc<void>::deallocate_stack_memory();
     
 }
 
