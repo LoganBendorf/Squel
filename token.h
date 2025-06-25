@@ -2,7 +2,7 @@
 
 #include "pch.h"
 
-enum token_type {
+enum token_type : std::uint8_t {
     ERROR_TOKEN, CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,
      COMMA, LINE_END, ILLEGAL, NEW_LINE, QUOTE, DOT, TRUE, FALSE, OPEN_BRACKET, CLOSE_BRACKET,
       EQUAL, NOT_EQUAL, LESS_THAN, GREATER_THAN, PLUS, MINUS, SLASH, ASTERISK, BANG, WHERE, ALTER, ADD, COLUMN, DEFAULT,
@@ -20,9 +20,9 @@ enum token_type {
         ASSERT
 };
 
-typedef struct token {
+using token = struct token {
     token_type type;
     std::string data;
     size_t line;
     size_t position;
-} token;
+};

@@ -7,7 +7,6 @@
 
 
 
-
 extern std::vector<std::string> errors;
 
 static std::string input;
@@ -17,9 +16,18 @@ static size_t line_count = 1;
 static size_t line_position_count = 0;
 
 
+static constexpr bool is_alpha(char a) {
+    return (std::isalpha(a) != 0);
+}
+
+static constexpr bool is_digit(char a) {
+    return (std::isdigit(a) != 0);
+}
+
+
 static size_t read_string() {
     size_t start = input_position;
-    while (input_position < input.length() && (std::isalpha(input[input_position]) || input[input_position] == '_' || std::isdigit(input[input_position]) )) {
+    while (input_position < input.length() && ( is_alpha(input[input_position]) || input[input_position] == '_' || is_digit(input[input_position] ))) {
         input_position++;
     }
     //printf("start [%d], pos after read [%d]. ", start, input_position);
@@ -30,9 +38,9 @@ static size_t read_string() {
 
 // Should be dumb, complicated numbers should be constructed in the PARSER (i.e decimals, negatives)
 static size_t read_number() {
-    size_t num_was_read = false;
+    bool num_was_read = false;
     size_t start = input_position;
-    while (input_position < input.length() && std::isdigit(input[input_position])) {
+    while (input_position < input.length() && is_digit(input[input_position])) {
         num_was_read = true;
         input_position++;
     }
@@ -56,7 +64,7 @@ static token parse_quoted_string(char type) {
     size_t start_line = line_count;
 
     std::string out;
-    while (input_position++ < input.length() && (line_position_count++)) {
+    while (input_position++ < input.length() && (line_position_count++ != 0)) {
         if (input[input_position] == '\n') {
             line_count++;
             line_position_count = 0;
@@ -257,7 +265,7 @@ std::vector<token> lexer(std::string input_str) {
             line_position_count++;
         } break;
         default: { // Can put keywords in hashmap
-            if (std::isalpha(input[input_position])) {
+            if (is_alpha(input[input_position])) {
                 size_t start = read_string();
                 std::string word = input.substr(start, input_position - start);
 
@@ -279,7 +287,7 @@ std::vector<token> lexer(std::string input_str) {
                 tok.data = word;
                 tokens.push_back(tok);
                 line_position_count += word.size();
-            } else if (std::isdigit(input[input_position])) {
+            } else if (is_digit(input[input_position])) {
                 size_t start = read_number();
                 if (start == SIZE_T_MAX) {
                     errors.push_back("Invalid number. Line = " + std::to_string(line_count) + ", position = " + std::to_string(line_position_count));

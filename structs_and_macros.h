@@ -3,17 +3,15 @@
 
 #include "pch.h"
 
-enum heap_or_arena {
-    HEAP = false, ARENA = true
-};
+#include "allocator_aliases.h"
 
 class SQL_data_type_object;
 
 class table_info_object;
-typedef struct display_table {
+using display_table = struct display_table {
     bool to_display;
-    table_info_object* table_info;
-} display_table;
+    UP<table_info_object> table_info;
+};
 
 struct test_container {
     std::string folder_name;
@@ -26,3 +24,6 @@ struct test {
     std::string text;
     bool except_fail;
 };
+
+
+#define SIZE_T_MIN_FUNC(a, b) (a) < (b) ? (a) : (b)

@@ -1,77 +1,67 @@
 
 #pragma once
+
 #include "pch.h"
-#include "arena.h"
+
+#include "allocators.h"
 
 class astring {
 private:
     std::string m_data;
-    arena<char> alloc;
+    main_alloc<char> alloc;
     
 public:
-    // Default constructors (use ARENA as default)
-    inline astring() : m_data(), alloc(arena<char>{ARENA}) {}
-    inline astring(const char* str) : m_data(str), alloc(arena<char>{ARENA}) {}
-    inline astring(const std::string& str) : m_data(str), alloc(arena<char>{ARENA}) {}
+    // Default constructors (use  as default)
+    inline astring() : m_data(), alloc(main_alloc<char>{}) {}
+    inline astring(const char* str) : m_data(str), alloc(main_alloc<char>{}) {}
+    inline astring(const std::string& str) : m_data(str), alloc(main_alloc<char>{}) {}
     inline astring(const astring& other) : m_data(other.m_data), alloc(other.alloc) {}
     
-    // Constructor for arena-allocated strings (from astringstream)
-    inline astring(const std::basic_string<char, std::char_traits<char>, arena<char>>& str) 
+    // Constructor for main_alloc-allocated strings (from astringstream)
+    inline astring(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str) 
         : m_data(str.c_str()), alloc(str.get_allocator()) {} 
     
     // Constructor for creating string with repeated character (fixes pad_length error)
-    inline astring(size_t count, char ch) : m_data(count, ch), alloc(arena<char>{ARENA}) {}
-    inline astring(size_t count, char ch, heap_or_arena location) : m_data(count, ch), alloc(arena<char>{location}) {}
-    inline astring(size_t count, char ch, const arena<char>& a) : m_data(count, ch), alloc(a) {}
+    inline astring(size_t count, char ch) : m_data(count, ch), alloc(main_alloc<char>{}) {}
+    inline astring(size_t count, char ch, const main_alloc<char>& a) : m_data(count, ch), alloc(a) {}
 
     // Add this constructor for creating astring from char buffer with length
-    inline astring(const char* buffer, size_t length, const arena<char>& a) 
+    inline astring(const char* buffer, size_t length, const main_alloc<char>& a) 
         : m_data(buffer, length), alloc(a) {}
     
-    // Also add the heap_or_arena version
-    inline astring(const char* buffer, size_t length, heap_or_arena location) 
-        : m_data(buffer, length), alloc(arena<char>{location}) {}
-    
-    // Location-based constructors
-    explicit inline astring(heap_or_arena location) : m_data(), alloc(arena<char>{location}) {}
-    inline astring(const char* str, heap_or_arena location) : m_data(str), alloc(arena<char>{location}) {}
-    inline astring(const std::string& str, heap_or_arena location) : m_data(str), alloc(arena<char>{location}) {}
-    inline astring(const astring& other, heap_or_arena location) : m_data(other.m_data), alloc(arena<char>{location}) {}
-    inline astring(const std::basic_string<char, std::char_traits<char>, arena<char>>& str, heap_or_arena location) 
-        : m_data(str.c_str()), alloc(arena<char>{location}) {}
-    
-    // Arena-based constructors (taking arena directly)
-    explicit inline astring(const arena<char>& a) : m_data(), alloc(a) {}
-    inline astring(const char* str, const arena<char>& a) : m_data(str), alloc(a) {}
-    inline astring(const std::string& str, const arena<char>& a) : m_data(str), alloc(a) {}
-    inline astring(const astring& other, const arena<char>& a) : m_data(other.m_data), alloc(a) {}
-    inline astring(const std::basic_string<char, std::char_traits<char>, arena<char>>& str, const arena<char>& a) 
+
+    // Arena-based constructors (taking main_alloc directly)
+    explicit inline astring(const main_alloc<char>& a) : m_data(), alloc(a) {}
+    inline astring(const char* str, const main_alloc<char>& a) : m_data(str), alloc(a) {}
+    inline astring(const std::string& str, const main_alloc<char>& a) : m_data(str), alloc(a) {}
+    inline astring(const astring& other, const main_alloc<char>& a) : m_data(other.m_data), alloc(a) {}
+    inline astring(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str, const main_alloc<char>& a) 
         : m_data(str.c_str()), alloc(a) {}
     
-    // Assignment operators - COPY both m_data and arena
+    // Assignment operators - COPY both m_data and main_alloc
     inline astring& operator=(const astring& other) {
         if (this != &other) {
             m_data = other.m_data;
-            alloc = other.alloc;  // Copy the arena too
+            alloc = other.alloc;  // Copy the main_alloc too
         }
         return *this;
     }
     
     inline astring& operator=(const std::string& str) {
         m_data = str;
-        // alloc stays the same (no arena to copy from std::string)
+        // alloc stays the same (no main_alloc to copy from std::string)
         return *this;
     }
     
     inline astring& operator=(const char* str) {
         m_data = str;
-        // alloc stays the same (no arena to copy from const char*)
+        // alloc stays the same (no main_alloc to copy from const char*)
         return *this;
     }
     
-    inline astring& operator=(const std::basic_string<char, std::char_traits<char>, arena<char>>& str) {
+    inline astring& operator=(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str) {
         m_data = str.c_str();  // Convert to regular string
-        alloc = str.get_allocator();  // Copy the arena allocator
+        alloc = str.get_allocator();  // Copy the main_alloc allocator
         return *this;
     }
     
@@ -79,7 +69,7 @@ public:
     inline astring& operator=(astring&& other) noexcept {
         if (this != &other) {
             m_data = std::move(other.m_data);
-            alloc = std::move(other.alloc);  // Move the arena too
+            alloc = std::move(other.alloc);  // Move the main_alloc too
         }
         return *this;
     }
@@ -92,7 +82,7 @@ public:
     
     // Utility methods
     inline const std::string& str() const { return m_data; }
-    inline const arena<char>& get_allocator() const { return alloc; }
+    inline const main_alloc<char>& get_allocator() const { return alloc; }
     
     // Public access to m_data for numeric conversions (fixes private access error)
     inline const char* data() const { return m_data.data(); }
@@ -108,7 +98,7 @@ public:
     
     // String operations that return new astring objects
     inline astring substr(size_t pos = 0, size_t len = std::string::npos) const {
-        return astring(m_data.substr(pos, len), alloc);  // Use same arena
+        return astring(m_data.substr(pos, len), alloc);  // Use same main_alloc
     }
     
     inline size_t find(const std::string& str, size_t pos = 0) const {
@@ -121,7 +111,7 @@ public:
     
     // Concatenation operators
     inline astring operator+(const astring& other) const {
-        return astring(m_data + other.m_data, alloc);  // Use this object's arena
+        return astring(m_data + other.m_data, alloc);  // Use this object's main_alloc
     }
     
     inline astring operator+(const std::string& str) const {

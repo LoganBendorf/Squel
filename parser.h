@@ -1,17 +1,16 @@
 #pragma once
 
 #include "pch.h"
-#include "arena_aliases.h"
 
-class evaluated_function_object;
+#include "allocator_aliases.h"
+#include "node.h"
+
+// class evaluated_function_object;
 class node;
 
-class table_object;
+// class table_object;
 struct token;
 
-template<typename T>
-class arena;
-
-void parser_init(std::vector<token> toks, std::vector<evaluated_function_object*> global_funcs, avec<table_object*> global_tabs);
-std::vector<node*> parse();
+void parser_init(std::vector<token> toks, avec<SP<evaluated_function_object>>& g_funcs, avec<SP<table_object>> g_tabs);
+avec<UP<node>> parse();
 

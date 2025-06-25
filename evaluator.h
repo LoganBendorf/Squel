@@ -1,12 +1,12 @@
 #pragma once
 
 #include "pch.h"
-#include "arena_aliases.h"
+#include "allocator_aliases.h"
 
 class environment;
 class node;
 class evaluated_function_object;
 class table_object;
 
-environment* eval_init(std::vector<node*> nds, std::vector<evaluated_function_object*> g_functions, avec<table_object*> g_tables);
-std::pair<std::vector<evaluated_function_object*>, avec<table_object*>> eval(environment* env);
+SP<environment> eval_init(avec<UP<node>> nds, avec<SP<evaluated_function_object>>& g_functions, avec<SP<table_object>>& g_tables);
+std::pair<avec<SP<evaluated_function_object>>, avec<SP<table_object>>> eval(SP<environment> env);

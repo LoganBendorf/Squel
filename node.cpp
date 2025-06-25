@@ -5,7 +5,7 @@
 #include "helpers.h"
 #include "object.h"
 
-arena<node> node::node_arena_alias; 
+main_alloc<node> node::node_allocator_alias;
 
 // null_node
 astring null_node::inspect() const {
@@ -14,132 +14,87 @@ astring null_node::inspect() const {
 node_type null_node::type() const {
     return NULL_NODE; 
 }
-null_node* null_node::clone(bool use_arena) const {
-    return new (use_arena) null_node();
+null_node* null_node::clone() const {
+    return new null_node();
 }
 
 // function_node
 function::function(function_object* set_func) {
-    if (in_arena) {
-        func = set_func;       
-    } else {
-        func = set_func->clone(in_arena);
-    }
+    func = UP<function_object>(set_func);       
 }
-function::~function() {
-    if (!in_arena) {
-      delete func;
-    }
-}
+function::function(UP<function_object> set_func) : 
+    func(std::move(set_func)) 
+{}
 astring function::inspect() const {
     return "function_node\n"; 
 }
 node_type function::type() const {
     return FUNCTION_NODE; 
 }
-function* function::clone(bool use_arena) const {
-    return new (use_arena) function(func);
+function* function::clone() const {
+    return new function(func->clone());
 }
 
 // insert_into_node
-insert_into::insert_into(object* set_value, bool clone) {
-    if (in_arena) {
-        if (clone) {
-            value = set_value->clone(in_arena);
-        } else {
-            value = set_value;
-        }
-
-    } else {
-        value = set_value->clone(in_arena);
-    }
+insert_into::insert_into(insert_into_object* set_value) {
+    value = UP<insert_into_object>(set_value);
 }
-insert_into::~insert_into() {
-    if (!in_arena) {
-      delete value;
-    }
-}
+insert_into::insert_into(UP<insert_into_object> set_value) : 
+    value(std::move(set_value)) 
+{}
 astring insert_into::inspect() const {
     return value->inspect();
 }
 node_type insert_into::type() const {
     return INSERT_INTO_NODE; 
 }
-insert_into* insert_into::clone(bool use_arena) const {
-    return new (use_arena) insert_into(value, true);
+insert_into* insert_into::clone() const {
+    return new insert_into(value->clone());
 }
 
 // select_node
-select_node::select_node(object* set_value, bool clone) {
-    if (in_arena) {
-        if (clone) {
-            value = set_value->clone(in_arena);
-        } else {
-            value = set_value;
-        }
-    } else {
-        value = set_value->clone(in_arena);
-    }
+select_node::select_node(object* set_value) {
+    value = UP<object>(set_value);
 }
-select_node::~select_node() {
-    if (!in_arena) {
-      delete value;
-    }
-}
+select_node::select_node(UP<object> set_value) : 
+    value(std::move(set_value)) 
+{}
 astring select_node::inspect() const {
     return value->inspect();
 }
 node_type select_node::type() const {
     return SELECT_NODE;
 }
-select_node* select_node::clone(bool use_arena) const {
-    return new (use_arena) select_node(value, true);
+select_node* select_node::clone() const {
+    return new select_node(value->clone());
 }
-
 
 // select_from_node
-select_from::select_from(object* set_value, bool clone) {
-    if (in_arena) {
-        if (clone) {
-            value = set_value->clone(in_arena);
-        } else {
-            value = set_value;
-        }
-    } else {
-        value = set_value->clone(in_arena);
-    }
+select_from::select_from(object* set_value) {
+    value = UP<object>(set_value);
 }
-select_from::~select_from() {
-    if (!in_arena) {
-      delete value;
-    }
-}
+select_from::select_from(UP<object> set_value) : 
+    value(std::move(set_value)) 
+{}
 astring select_from::inspect() const {
     return value->inspect();
 }
 node_type select_from::type() const {
     return SELECT_FROM_NODE;
 }
-select_from* select_from::clone(bool use_arena) const {
-    return new (use_arena) select_from(value, true);
+select_from* select_from::clone() const {
+    return new select_from(value->clone());
 }
 
 // alter_table_node
 alter_table::alter_table(object* set_table_name, object* set_tab_edit) {
-    if (in_arena) {
-        table_name = set_table_name;
-        table_edit = set_tab_edit;
-    } else {
-        table_name = set_table_name->clone(in_arena);
-        table_edit = set_tab_edit->clone(in_arena);
-    }
+    table_name = UP<object>(set_table_name);
+    table_edit = UP<object>(set_tab_edit);
 }
-alter_table::~alter_table() {
-    if (!in_arena) {
-      delete table_name;
-      delete table_edit;
-    }
-}
+alter_table::alter_table(UP<object> set_table_name, UP<object> set_tab_edit) : 
+    table_name(std::move(set_table_name)), 
+    table_edit(std::move(set_tab_edit)) 
+{}
 astring alter_table::inspect() const {
     astringstream stream;
     stream << "alter_table: ";
@@ -150,37 +105,20 @@ astring alter_table::inspect() const {
 node_type alter_table::type() const {
     return ALTER_TABLE_NODE; 
 }
-alter_table* alter_table::clone(bool use_arena) const {
-    return new (use_arena) alter_table(table_name, table_edit);
+alter_table* alter_table::clone() const {
+    return new alter_table(table_name->clone(), table_edit->clone());
 }
 
 // create_table_node
-create_table::create_table(object* set_table_name, const avec<table_detail_object*>& set_details) {
-    if (in_arena) {
-        table_name = set_table_name;
-
-        details = avec<table_detail_object*>();
-        for (const auto& detail : set_details) {
-            details.push_back(detail);
-        }
-
-    } else {
-        table_name = set_table_name->clone(in_arena);
-
-        details = hvec_copy(table_detail_object*);
-        for (const auto& detail : set_details) {
-            details.push_back(detail->clone(in_arena));
-        }
-    }
+create_table::create_table(object* set_table_name, avec<UP<table_detail_object>>&& set_details) : 
+    details(std::move(set_details)) {
+    table_name = UP<object>(set_table_name);
+    
 }
-create_table::~create_table() {
-    if (!in_arena) {
-      delete table_name;
-      for (const auto& detail : details) {
-        delete detail;
-      }
-    }
-}
+create_table::create_table(UP<object> set_table_name, avec<UP<table_detail_object>>&& set_details) : 
+    table_name(std::move(set_table_name)), 
+    details(std::move(set_details)) 
+{}
 astring create_table::inspect() const {
     astringstream stream;
     stream << "create_table: ";
@@ -188,7 +126,7 @@ astring create_table::inspect() const {
 
     bool first = true;
     for (const auto& detail : details) {
-        if (!first) stream << ", ";
+        if (!first) { stream << ", "; }
         stream << detail->inspect(); 
         first = false;
     }
@@ -199,8 +137,14 @@ astring create_table::inspect() const {
 node_type create_table::type() const {
     return CREATE_TABLE_NODE; 
 }
-create_table* create_table::clone(bool use_arena) const {
-    return new (use_arena) create_table(*this);
+create_table* create_table::clone() const {
+    avec<UP<table_detail_object>> cloned_details;
+    cloned_details.reserve(details.size());
+
+    for (const auto& detail : details) {
+        cloned_details.push_back(UP<table_detail_object>(detail->clone())); }
+
+    return new create_table(table_name->clone(), std::move(cloned_details));
 }
 
 
@@ -208,28 +152,18 @@ create_table* create_table::clone(bool use_arena) const {
 
 
 // assert_node
-assert_node::assert_node(assert_object* set_value, bool clone) {
-    if (in_arena) {
-        if (clone) {
-            value = set_value->clone(in_arena);
-        } else {
-            value = set_value;
-        }
-    } else {
-        value = set_value->clone(in_arena);
-    }
+assert_node::assert_node(assert_object* set_value) {
+    value = UP<assert_object>(set_value);
 }
-assert_node::~assert_node() {
-    if (!in_arena) {
-      delete value;
-    }
-}
+assert_node::assert_node(UP<assert_object> set_value) : 
+    value(std::move(set_value)) 
+{}
 astring assert_node::inspect() const {
     return value->inspect();
 }
 node_type assert_node::type() const {
     return ASSERT_NODE;
 }
-assert_node* assert_node::clone(bool use_arena) const {
-    return new (use_arena) assert_node(value, true);
+assert_node* assert_node::clone() const {
+    return new assert_node(value->clone());
 }

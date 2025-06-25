@@ -9,6 +9,13 @@
 #include <algorithm>
 #include <numeric>
 #include <cstdlib>
+#include <iomanip>
+#include <expected>
+#include <cstddef>
+#include <cstring>
+#include <memory> 
+#include <charconv>
+
 
 #include <qt5/QtWidgets/qapplication.h>
 //#include <QApplication>

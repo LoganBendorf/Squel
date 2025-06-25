@@ -57,10 +57,10 @@ int main() {
     // clear_g_tables();
     // arena_inst.destroy();
 
-    // auto type = UP<SQL_data_type_object>(new SQL_data_type_object(NONE, INT, new integer_object(11)));
-    // auto detail = UP<table_detail_object>(new table_detail_object("column_name", type.get(), new null_object()));
-    auto type = new SQL_data_type_object(NONE, INT, new integer_object(11));
-    auto detail = new table_detail_object("column_name", type, new null_object());
+    auto type = MAKE_UP(SQL_data_type_object, NONE, INT, MAKE_UP(integer_object, 11));
+    auto detail = MAKE_UP(table_detail_object, "column_name", type.get(), new null_object());
+    // auto type = new SQL_data_type_object(NONE, INT, new integer_object(11));
+    // auto detail = new table_detail_object("column_name", type, new null_object());
     
     // Test cloning without table_object
     std::cout << "About to clone detail..." << std::endl;

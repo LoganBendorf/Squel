@@ -6,11 +6,9 @@
 
 #include "object.h"
 
-#include <span>
-
 
 std::span<const char* const> token_type_span() {
-    static constexpr const char* token_type_to_string[] = {
+    static constexpr std::array token_type_to_string = {
         "ERROR", "CREATE", "TABLE", "SELECT", "FROM", "INSERT", "INTO", "VALUES", "STRING_LITERAL", "INTEGER_LITERAL", "OPEN_PAREN", "CLOSE_PAREN", "SEMICOLON",
           "COMMA", "LINE_END", "ILLEGAL", "NEW_LINE", "QUOTE", "DOT", "TRUE", "FALSE", "OPEN_BRACKET", "CLOSE_BRACKET",
             "EQUAL", "NOT_EQUAL", "LESS_THAN", "GREATER_THAN", "PLUS", "MINUS", "SLASH", "ASTERISK", "BANG", "WHERE", "ALTER", "ADD", "COLUMN", "DEFAULT",
@@ -34,7 +32,7 @@ std::string token_type_to_string(token_type index) {
 }
 
 
-bool is_numeric_data_type(SQL_data_type_object* data_type) {
+[[maybe_unused]] bool is_numeric_data_type(SQL_data_type_object* data_type) {
     if (data_type->data_type == INT  ||
         data_type->data_type == FLOAT ||
         data_type->data_type == DOUBLE ||
@@ -75,7 +73,7 @@ bool is_numeric_token(token tok) {
 }
 
 
-bool is_string_object(object* obj) {
+bool is_string_object(const UP<object>& obj) {
     switch (obj->type()) {
     case STRING_OBJ:
         return true;
@@ -84,7 +82,7 @@ bool is_string_object(object* obj) {
     }
 }
 
-bool is_numeric_object(object* obj) {
+bool is_numeric_object(const UP<object>& obj) {
     switch(obj->type()) {
     case INTEGER_OBJ: case DECIMAL_OBJ:
         return true;
@@ -93,11 +91,15 @@ bool is_numeric_object(object* obj) {
     }
 }
 
-bool is_conditional_object(object* obj) {
+bool is_conditional_object(const UP<object>& obj) {
     switch (obj->type()) {
     case INFIX_EXPRESSION_OBJ:
         return true;
     default:
         return false;
     }
+}
+
+bool is_evaluated(const UP<object>& obj) {
+    return dynamic_cast<const evaluated*>(obj.get()) != nullptr;
 }

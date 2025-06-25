@@ -8,6 +8,7 @@
 #include <fstream>
 
 
+
 extern std::vector<std::string> errors;
 
 std::vector<struct test_container> init_read_test() {
@@ -30,11 +31,11 @@ std::vector<struct test_container> init_read_test() {
 
     // Sort tests in folder
     for (auto& test : tests) {
-        std::sort(test.test_paths.begin(), test.test_paths.end());
+        std::ranges::sort(test.test_paths);
     }
 
     if (tests.size() == 0) {
-        printf("NO TESTS\n");
+        std::cout << "NO TESTS" << std::endl;
         exit(1);
     }
 
@@ -52,7 +53,7 @@ std::vector<struct test_container> init_read_test() {
 struct test read_test(struct test_container test, size_t index) {
     
     if (test.current_test_num == test.max_tests) {
-        return {"NO MORE TESTS!!!!", false};
+        return {.text="NO MORE TESTS!!!!", .except_fail=false};
     }
 
     std::ifstream file;

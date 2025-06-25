@@ -1,29 +1,29 @@
 
+#include <algorithm>
+
 #include "pch.h"
 
-#include "arena_aliases.h"
+#include "allocators.h"
+#include "allocator_aliases.h"
 #include "structs_and_macros.h"
 #include "test_reader.h"
 #include "lexer.h"
 #include "parser.h"
 #include "evaluator.h"
 #include "print.h"
-#include "arena.h"
 #include "object.h"
-
-extern arena<bool> arena_inst;
 
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
-static hvec(table_object*, g_tables);
-static std::vector<evaluated_function_object*> g_functions;
+static avec<SP<table_object>> g_tables;
+static avec<SP<evaluated_function_object>> g_functions;
 
-std::string input = "";
+std::string input;
 
 display_table display_tab = {false, nullptr};
 
-std::vector<struct test_container> tests;
+static std::vector<struct test_container> tests;
 
 // CURRENTLY WORKING ON:
 // CREATE TABLE
@@ -34,7 +34,7 @@ static void display_errors(QGridLayout* commands_results_label);
 static void display_graphical_table(QGridLayout* table_grid);
 
 static auto clear_layout = [](QLayout* layout) {
-    QLayoutItem* item;
+    QLayoutItem* item = nullptr;
     while ((item = layout->takeAt(0)) != nullptr) {
         delete item->widget(); // deletes the widget
         delete item;           // deletes the layout item
@@ -54,28 +54,20 @@ static auto toggle_show_test_children = [](QLayout* layout) {
 };
 
 static void clear_g_tables() {
-    for (const auto& tab : g_tables) {
-        delete tab;
-    }
     g_tables.clear();
 }
 
 static void clear_g_functions() {
-    for (const auto& func : g_functions) {
-        delete func;
-    }
     g_functions.clear();
 }
 
-enum input_style {
+enum input_style : std::uint8_t {
     VISUAL, TEST
 };
 
 constexpr enum input_style input_style = TEST;
 
 int main (int argc, char* argv[]) {
-
-    // arena_inst.construct();
 
     display_tab.to_display = false;
 
@@ -139,9 +131,9 @@ int main (int argc, char* argv[]) {
 
     
 
-    QVBoxLayout* test_info_layout;
-    QLabel* current_test_marker_label;
-    QLabel* current_test_label;
+    QVBoxLayout* test_info_layout = nullptr;
+    QLabel* current_test_marker_label = nullptr;
+    QLabel* current_test_label = nullptr;
     QFrame* test_frame = new QFrame();
     if (input_style == TEST) {
         test_info_layout = new QVBoxLayout();
@@ -192,7 +184,7 @@ int main (int argc, char* argv[]) {
         tests = init_read_test();
 
         // Alphabetical sort
-        std::sort(tests.begin(), tests.end(), [](const test_container& a, const test_container& b) {
+        std::ranges::sort(tests, [](const test_container& a, const test_container& b) {
             return a.folder_name < b.folder_name;
         });
     
@@ -202,8 +194,7 @@ int main (int argc, char* argv[]) {
         
 
         // FOLDER BUTTONS
-        for (size_t i = 0; i < tests.size(); i++) {
-            struct test_container test = tests[i];
+        for (const auto& test : tests) {
             QPushButton* folder_show_button = new QPushButton(test.folder_name.c_str());
             folder_show_button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); 
             scrollLayout->addWidget(folder_show_button);
@@ -221,7 +212,7 @@ int main (int argc, char* argv[]) {
             
             // INDIVIDUAL TESTS
 
-            for (size_t j = 0; j < tests[i].test_paths.size(); j++) {
+            for (size_t j = 0; j < test.test_paths.size(); j++) {
                 std::string path = test.test_paths[j];
                 path = path.substr(test.folder_name.length() + 1, path.length());
                 std::string button_name = path + ": Start test";
@@ -252,8 +243,8 @@ int main (int argc, char* argv[]) {
                     std::cout << "DONE ---------------------------\n\n";
                         
                     constexpr size_t size = 1 << 18;
-                    std::byte stack_buffer[size];
-                    arena_inst.init(stack_buffer, size);
+                    static std::array<std::byte, size> stack_buffer{};
+                    main_alloc<void>::allocate_stack_memory(std::span(stack_buffer));
 
                     auto start = std::chrono::high_resolution_clock::now();
 
@@ -261,27 +252,22 @@ int main (int argc, char* argv[]) {
                     // print_tokens(tokens);
 
                     parser_init(tokens, g_functions, g_tables);
-                    std::vector<node*> nodes = parse();
+                    avec<UP<node>> nodes = parse();
                     // print_nodes(nodes);
 
-                    environment* env = eval_init(nodes, g_functions, g_tables);
-                    const auto& [funcs, tables] = eval(env);
-                    clear_g_functions();
-                    for (const auto& new_func : funcs) {
-                        g_functions.push_back(new_func->clone(HEAP)); 
-                    }
-                    clear_g_tables();
-                    for (const auto& tab : tables) {
-                        g_tables.push_back(tab->clone(HEAP));
-                    }
+                    SP<environment> env = eval_init(std::move(nodes), g_functions, g_tables);
+                    auto [funcs, tables] = eval(env);
+                    g_functions = std::move(funcs);
+                    g_tables = std::move(tables);
 
                     auto end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double> elapsed = end - start;
                     std::cout << "Elapsed time: " << elapsed.count() * 1000 << " miliseconds\n";
 
-                    std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";
+                    const auto mem_used = static_cast<char*>(main_alloc<void>::stack.top) - static_cast<char*>(main_alloc<void>::stack.base);
+                    std::cout << "Arena bytes used = " << mem_used << "\n";
 
-                    arena_inst.destroy();
+                    main_alloc<void>::deallocate_stack_memory();
             
                     if (!errors.empty()) {
                         display_errors(commands_results_label);
@@ -324,41 +310,32 @@ int main (int argc, char* argv[]) {
             std::cout << "No input\n";
             return;}
 
-        arena_inst.init();
+        constexpr size_t size = 1 << 18;
+        static std::array<std::byte, size> stack_buffer{};
+        main_alloc<void>::allocate_stack_memory(std::span(stack_buffer));
+
+        auto start = std::chrono::high_resolution_clock::now();
 
         std::vector<token> tokens = lexer(input);
-        print_tokens(tokens);
+        // print_tokens(tokens);
 
         parser_init(tokens, g_functions, g_tables);
-        std::vector<node*> nodes = parse();
-        print_nodes(nodes);
+        avec<UP<node>> nodes = parse();
+        // print_nodes(nodes);
 
-        environment* env = eval_init(nodes, g_functions, g_tables);
-        const auto& [funcs, tables] = eval(env);
-        clear_g_functions();
-        for (const auto& new_func : funcs) {
-            g_functions.push_back(new_func->clone(HEAP)); 
-        }
-        clear_g_tables();
-        for (const auto& tab : tables) {
-            g_tables.push_back(tab);
-        }
+        SP<environment> env = eval_init(std::move(nodes), g_functions, g_tables);
+        auto [funcs, tables] = eval(env);
+        g_functions = std::move(funcs);
+        g_tables = std::move(tables);
 
-        std::cout << "Arena bytes used = " << arena_inst.get_usage() << "\n";
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "Elapsed time: " << elapsed.count() * 1000 << " miliseconds\n";
 
-        arena_inst.destroy();
+        const auto mem_used = static_cast<char*>(main_alloc<void>::stack.top) - static_cast<char*>(main_alloc<void>::stack.base);
+        std::cout << "Arena bytes used = " << mem_used << "\n";
 
-        if (!errors.empty()) {
-            display_errors(commands_results_label);
-        } else {
-            clear_layout(commands_results_label);
-            QLabel* results_label = new QLabel("No errors");
-            commands_results_label->addWidget(results_label, 0, 0);
-
-           if (display_tab.to_display) {
-                display_graphical_table(table_grid);
-            }
-        }
+        main_alloc<void>::deallocate_stack_memory();
 
         if (!warnings.empty()) {
             std::cout << "WARNINGS ----------------\n";
@@ -381,8 +358,6 @@ int main (int argc, char* argv[]) {
 
     clear_g_functions();
     clear_g_tables();
-
-    // arena_inst.teardown();
 
     return qt_return;
 }
@@ -408,9 +383,9 @@ static void display_errors(QGridLayout* commands_results_label) {
 static void display_graphical_table(QGridLayout* table_grid) {
     clear_layout(table_grid);  
                         
-    table_info_object* tab_info = display_tab.table_info;
+    const UP<table_info_object>& tab_info = display_tab.table_info;
 
-    table_object* tab = tab_info->tab;
+    const SP<table_object>& tab = tab_info->tab;
 
     table_grid->addWidget(new QLabel(QString::fromStdString(std::string("Table: " + tab->table_name))), 0, 0); // err
 
@@ -424,7 +399,7 @@ static void display_graphical_table(QGridLayout* table_grid) {
 
         const auto& [col_name, col_in_bounds] = tab->get_column_name(col_id);
         if (!col_in_bounds) {
-            errors.push_back("display_graphical_table(): Out of bounds column index"); return; }
+            errors.emplace_back("display_graphical_table(): Out of bounds column index"); return; }
 
         table_grid->addWidget(new QLabel(QString::fromStdString(std::string(col_name))), y, x);
         x++;
@@ -434,12 +409,15 @@ static void display_graphical_table(QGridLayout* table_grid) {
     y = 2;
     for (const auto& row_index : tab_info->row_ids) {
 
-        const auto& [row, row_index_in_bounds] = tab->get_row_vector(row_index);
-        if (!row_index_in_bounds) {
-            errors.push_back("print_table(): Out of bounds row index"); return; }
+        auto result = tab->get_row_vec_ptr(row_index);
+        if (!result.has_value()) {
+            errors.emplace_back("print_table(): Out of bounds row index"); return; }
+
+        const auto& row = **result;
+
         for (const auto& col_id : tab_info->col_ids) {
             if (col_id >= row.size()) {
-                errors.push_back("print_table(): Out of bounds column index"); 
+                errors.emplace_back("print_table(): Out of bounds column index"); 
                 return;
             }
 

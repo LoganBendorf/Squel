@@ -3,62 +3,51 @@
 
 #include "environment.h"
 
-#include <object.h>
+#include "object.h"
 
 
-arena<environment> environment::environment_arena_alias;
 
+main_alloc<environment> environment::environment_allocator_alias;
 
-environment::environment() {
-    parent = NULL; 
+environment::environment() : parent(nullptr) {}
 
-    if (in_arena) {
-        functions = avec<evaluated_function_object*>();
-        variables = avec<variable_object*>();
-    } else {
-        functions = hvec_copy(evaluated_function_object*);
-        variables = hvec_copy(variable_object*);
-    }
-}
-
-environment::environment(environment* par) {
-    
-    parent = par; 
-
-    if (in_arena) {
-        functions = avec<evaluated_function_object*>();
-        variables = avec<variable_object*>();
-    } else {
-        functions = hvec_copy(evaluated_function_object*);
-        variables = hvec_copy(variable_object*);
-    }
-
-}
+environment::environment(environment* par) : parent(SP<environment>(par)) { }
+environment::environment(SP<environment> par) : parent(par) { }
 
 environment::~environment() {
-    if (in_arena) {
-        for (const auto& func : functions) {
-            delete func;
-        }
-        for (const auto& var : variables) {
-            delete var;
-        }
-    }
 }
-
 
 bool environment::add_function(evaluated_function_object* func) {
     if (is_function(func->name)) {
         return false; }
-    functions.push_back(func);
+    functions.push_back(UP<evaluated_function_object>(func));
+    return true;
+}
+bool environment::add_function(UP<evaluated_function_object>&& func) {
+    if (is_function(func->name)) {
+        return false; }
+    functions.push_back(std::move(func));
     return true;
 }
 
 void environment::add_or_replace_function(evaluated_function_object* new_func) {
     bool exists = false;
-    for (size_t i = 0; i < functions.size(); i++) {
-        if (functions[i]->name == new_func->name) {
-            functions[i] = new_func;
+    for (auto& function : functions) {
+        if (function->name == new_func->name) {
+            function = UP<evaluated_function_object>(new_func);
+            exists = true;
+            break;
+        }
+    }
+
+    if (!exists) {
+        functions.push_back(SP<evaluated_function_object>(new_func)); }
+}
+void environment::add_or_replace_function(SP<evaluated_function_object> new_func) {
+    bool exists = false;
+    for (auto& function : functions) {
+        if (function->name == new_func->name) {
+            function = std::move(new_func);
             exists = true;
             break;
         }
@@ -68,7 +57,7 @@ void environment::add_or_replace_function(evaluated_function_object* new_func) {
         functions.push_back(new_func); }
 }
 
-bool environment::is_function(const std_and_astring_variant& name) {
+bool environment::is_function(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
     VISIT(name, unwrapped,
@@ -81,14 +70,13 @@ bool environment::is_function(const std_and_astring_variant& name) {
     }
 
     // If not in child scope, maybe in parent scope
-    if (parent) { 
+    if (parent != nullptr) { 
         return parent->is_function(unwrapped_name); }
 
     return false;
-    
 }
 
-object* environment::get_function(const std_and_astring_variant& name) {
+std::pair<SP<evaluated_function_object>, bool> environment::get_function(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
     VISIT(name, unwrapped,
@@ -97,52 +85,58 @@ object* environment::get_function(const std_and_astring_variant& name) {
 
     for (const auto& func : functions) {
         if (func->name == unwrapped_name) {
-            return func; }
+            return {func, true}; }
     }
 
     // If not in child scope, maybe in parent scope
-    if (parent) { 
+    if (parent != nullptr) { 
         return parent->get_function(unwrapped_name); }
 
-    return new error_object();
+    return {nullptr, false};
 }
 
-bool environment::add_variables(const avec<argument_object*>& args) {
+bool environment::add_variables(avec<UP<argument_object>>&& args) {
     for (const auto& arg : args) {
         if (is_variable(arg->name)) {
             return false; }
     }
 
-    for (const auto& arg : args) {
-        variable_object* variable = new variable_object(arg->name, arg->value);
-        variables.push_back(variable);
+    for (auto& arg : std::move(args)) {
+        auto variable = MAKE_UP(variable_object, arg->name, std::move(arg->value));
+        variables.push_back(std::move(variable));
     }
     return true;
 }
 
-bool environment::add_variable(variable_object* var) {
+UP<object> environment::add_variable(variable_object* var) {
     if (is_variable(var->name)) {
-        return false; 
-    }
+        return UP<object>(new error_object("Failed to add variable (" + var->inspect() + ") to environment")); }
 
-    variables.push_back(var);
-    return true;
+    variables.push_back(UP<variable_object>(var));
+    return UP<object>(new null_object());
+}
+UP<object> environment::add_variable(UP<variable_object>&& var) {
+    if (is_variable(var->name)) {
+        return UP<object>(new error_object("Failed to add variable (" + var->inspect() + ") to environment")); }
+
+    variables.push_back(std::move(var));
+    return UP<object>(new null_object());
 }
 
-bool environment::is_variable(const astring& name) {
+bool environment::is_variable(const astring& name) const {
     for (const auto& var : variables) {
         if (var->name == name) {
             return true; }
     }
 
     // If not in child scope, maybe in parent scope
-    if (parent) { 
+    if (parent != nullptr) { 
         return parent->is_variable(name); }
 
     return false;
 }
 
-object* environment::get_variable(const std_and_astring_variant& name) {
+std::expected<UP<variable_object>, UP<error_object>> environment::get_variable(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
     VISIT(name, unwrapped,
@@ -151,15 +145,15 @@ object* environment::get_variable(const std_and_astring_variant& name) {
 
     for (const auto& var : variables) {
         if (var->name == unwrapped_name) {
-            return var;
+            return UP<variable_object>(var->clone());
         }
     }
 
     // If not in child scope, maybe in parent scope
-    if (parent) { 
+    if (parent != nullptr) { 
         return parent->get_variable(unwrapped_name); }
 
-    return new error_object("Variable not found");
+    return std::unexpected(MAKE_UP(error_object, "Variable not found"));
 }
 
 avec<astring> environment::inspect_variables() {

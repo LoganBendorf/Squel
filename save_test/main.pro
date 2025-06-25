@@ -19,8 +19,9 @@ OBJECTS_DIR = build
 QMAKE_CXXFLAGS += -fdiagnostics-color=always
 QMAKE_LDFLAGS  += -fdiagnostics-color=always
 
-# C++ 20
-QMAKE_CXXFLAGS += -std=c++20
+# C++ 23
+QMAKE_CXXFLAGS += -std=c++23
+
 # Optimize. O3 has a bunch of warnings that can't be fixed, so stick with O2. Both are only about 2x faster so not worth the compile time.
 QMAKE_CXXFLAGS += -O0
 

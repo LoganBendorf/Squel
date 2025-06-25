@@ -2,11 +2,11 @@
 QT += widgets
 TEMPLATE = app
 
-INCLUDEPATH += $$PWD/Arena
-SOURCES += evaluator.cpp object.cpp parser.cpp main.cpp environment.cpp helpers.cpp node.cpp lexer.cpp print.cpp test_reader.cpp
-SOURCES += Arena/arena.cpp
+INCLUDEPATH += $$PWD/Allocators
+SOURCES += object.cpp node.cpp environment.cpp evaluator.cpp parser.cpp main.cpp helpers.cpp lexer.cpp print.cpp test_reader.cpp
+#SOURCES += Allocators/allocators.cpp
 HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h
-HEADERS += Arena/arena.h  Arena/arena_aliases.h  Arena/arena_string.h
+HEADERS += Allocators/allocators.h  Allocators/allocator_aliases.h  Allocators/allocator_string.h
 TARGET = squel
 
 DESTDIR = build
@@ -16,8 +16,9 @@ OBJECTS_DIR = build
 QMAKE_CXXFLAGS += -fdiagnostics-color=always
 QMAKE_LDFLAGS  += -fdiagnostics-color=always
 
-# C++ 20
-QMAKE_CXXFLAGS += -std=c++20
+# C++ 23
+QMAKE_CXXFLAGS += -std=c++23
+
 # Optimize. O3 has a bunch of warnings that can't be fixed, so stick with O2. Both are only about 2x faster so not worth the compile time.
 QMAKE_CXXFLAGS += -O0
 
@@ -67,10 +68,10 @@ QMAKE_CXXFLAGS += -pedantic-errors
 # Debug flags
 CONFIG += debug
 #QMAKE_CXXFLAGS += -g
-QMAKE_CXXFLAGS += -g3
-QMAKE_CXXFLAGS += -fno-omit-frame-pointer 
-QMAKE_CXXFLAGS += -funwind-tables
-QMAKE_CXXFLAGS += -ggdb3
+#QMAKE_CXXFLAGS += -g3
+#QMAKE_CXXFLAGS += -fno-omit-frame-pointer 
+#QMAKE_CXXFLAGS += -funwind-tables
+#QMAKE_CXXFLAGS += -ggdb3
 
 # Compiler profiler
 #QMAKE_CXXFLAGS += -ftime-report
