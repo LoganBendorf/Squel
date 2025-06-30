@@ -73,16 +73,23 @@ bool is_numeric_token(token tok) {
 }
 
 
-bool is_string_object(const UP<object>& obj) {
+static bool is_string_object(const object* obj) {
     switch (obj->type()) {
-    case STRING_OBJ:
+        case STRING_OBJ:
         return true;
     default:
         return false;
     }
 }
 
-bool is_numeric_object(const UP<object>& obj) {
+bool is_string_object(const UP<object>& obj) {
+    return is_string_object(static_cast<const object*>(obj.get())); }
+
+bool is_string_object(const UP<evaluated>& obj) {
+    return is_string_object(static_cast<const object*>(obj.get())); }
+
+
+static bool is_numeric_object(const object* obj) {
     switch(obj->type()) {
     case INTEGER_OBJ: case DECIMAL_OBJ:
         return true;
@@ -90,6 +97,13 @@ bool is_numeric_object(const UP<object>& obj) {
         return false;
     }
 }
+
+bool is_numeric_object(const UP<object>& obj) {
+    return is_numeric_object(static_cast<const object*>(obj.get())); }
+
+bool is_numeric_object(const UP<evaluated>& obj) {
+    return is_numeric_object(static_cast<const object*>(obj.get())); }
+
 
 bool is_conditional_object(const UP<object>& obj) {
     switch (obj->type()) {
@@ -100,6 +114,17 @@ bool is_conditional_object(const UP<object>& obj) {
     }
 }
 
-bool is_evaluated(const UP<object>& obj) {
+bool is_evaluated(const UP<evaluated>& obj) {
     return dynamic_cast<const evaluated*>(obj.get()) != nullptr;
+}
+
+
+// Debug funcs
+std::string call_inspect(const UP<object>& obj)    { return obj->inspect(); }
+std::string call_inspect(const UP<evaluated>& obj) { return obj->inspect(); }
+const UP<object>& index_avec(const avec<UP<object>>& vec, size_t index) {
+    return vec[index]; 
+}
+size_t avec_size(const avec<UP<object>>& vec) {
+    return vec.size();
 }

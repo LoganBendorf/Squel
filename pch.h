@@ -15,6 +15,7 @@
 #include <cstring>
 #include <memory> 
 #include <charconv>
+#include <source_location>
 
 
 #include <qt5/QtWidgets/qapplication.h>

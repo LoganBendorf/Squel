@@ -1,21 +1,25 @@
 #pragma once
 
-#include "pch.h"
-
 #include "allocator_structs.h"
+
+#include <cstring>
+#include <iostream>
+#include <cstdint>
+#include <source_location>
+#include <cstdlib> 
+#include <vector>
+
 
 static constexpr size_t size_t_min(size_t a, size_t b) {
     return a < b ? a : b;
 }
 
-#ifdef DEBUG_ALLOCATORS
-    #include <iostream>
-    #include <source_location>
-    static constexpr void log(const std::source_location& location = std::source_location::current()) {
-        std::cout << "Function: " << location.function_name() << '\n';
-        std::cout << "Line: " << location.line() << '\n';
-    }
-#endif
+// #define DEBUG_ALLOCATORS true
+static inline void log(const std::source_location& location = std::source_location::current()) {
+    std::cout << location.file_name() << ": " << location.function_name() << std::endl;
+    // std::cout << "Line: " << location.line() << '\n';
+}
+
 
 template<typename T>
 concept NotVoid = !std::same_as<T, void>;
@@ -135,7 +139,11 @@ class mallocator : public allocator_base<T> {
             log();
         #endif
 
-        return block{size, malloc(size)};
+        auto* mem = malloc(size);
+        if (mem == nullptr) {
+            std::cout << "Failed to allocate memory" << std::endl; log(); }
+
+        return block{size, mem};
     }
 
     void allocate_all() override {
@@ -256,19 +264,25 @@ class stack_allocator : public allocator_base<T> {
     }
 
 
-    static void allocate_stack_memory(std::span<std::byte> stack_span) {
+    static void allocate_stack_memory(size_t size) {
         #ifdef DEBUG_ALLOCATORS
             log();
         #endif
 
+        if (allocated) {
+            return; }
+
         allocated = true;
-        base = stack_span.data(); 
-        capacity = stack_span.size();
+        base = malloc(size);
+        if (base == nullptr) {
+            std::cout << "Failed to allocate memory" << std::endl; log(); }
+        capacity = size;
         top = base;
     }
 
     static void deallocate_stack_memory() {
         allocated = false;
+        free(base);
     }
 
     static constexpr bool good_size([[maybe_unused]] size_t size) {
@@ -287,8 +301,19 @@ class stack_allocator : public allocator_base<T> {
         if (base == nullptr) {
             return false; }
 
-        auto available = static_cast<char*>(base) + capacity - static_cast<char*>(top);
-        if (static_cast<size_t>(available) < size) {
+        if (!allocated) {
+            return false; }
+
+        char* stack_end = static_cast<char*>(base) + capacity;
+        char* current_top = static_cast<char*>(top);
+
+        if (current_top < static_cast<char*>(base) || current_top > stack_end) {
+            std::cout << "Stack overflow somehow" << std::endl;
+            exit(1);
+        }
+        
+        size_t available = static_cast<size_t>(stack_end - current_top);
+        if (available < size) {
             return false; }
 
         return true;
@@ -307,6 +332,8 @@ class stack_allocator : public allocator_base<T> {
             top = static_cast<char*>(top) + size;
             return {size, old_top};
         } else {
+            if (base == nullptr) {
+                std::cout << "Stack failed to allocate memory, should have been passed to mallocator but wasn't" << std::endl; log(); }
             return {0, nullptr};
         }
     }
@@ -341,7 +368,7 @@ class stack_allocator : public allocator_base<T> {
             std::memcpy(new_block.mem, blk.mem, blk.size);
             // Only deallocate if it's the top block
             if (static_cast<char*>(blk.mem) + blk.size == top) {
-                top = blk.mem;
+                top = static_cast<char*>(blk.mem);
             }
             blk = new_block;
         }
@@ -367,25 +394,30 @@ class stack_allocator : public allocator_base<T> {
     bool owns(block blk) override {
         #ifdef DEBUG_ALLOCATORS
             log();
+            std::cout << "\tStack is " << (allocated ? "allocated" : "not allocated") << std::endl;
+            std::cout << "\tStack start: " << base << ". Stack top: " << top << ". Stack end: " << static_cast<void*>(static_cast<char*>(base) + capacity)<< std::endl; 
+            std::cout << "\t" << blk.mem << std::endl;
         #endif
 
         if (base == nullptr) {
             return false; }
 
-        if (blk.mem >= base && blk.mem < top) {
+        if (blk.mem >= base && blk.mem < static_cast<char*>(base) + capacity) {
             return true;
         } else {
             return false;
         }
     }
         
+    // Deallocations will crash (seg fault) if Address Sanitizer is enabled
     void deallocate_block(block blk) override {
+        return;
         #ifdef DEBUG_ALLOCATORS
             log();
         #endif
 
         if (static_cast<char*>(blk.mem) + blk.size == top) {
-            top = blk.mem;
+            top = static_cast<char*>(blk.mem);
         }
     }
         
@@ -491,6 +523,7 @@ class fat_allocator : public allocator_base<T> {
         block blk = {size, nullptr};
         int rc = posix_memalign(&blk.mem, alignof(std::max_align_t), size);
         if (rc != 0) {
+            std::cout << "Failed to allocate memory" << std::endl; log(); 
             return {0, nullptr}; }
 
         return blk;
@@ -610,7 +643,15 @@ class main_alloc : public allocator_base<T> {
             log();
         #endif
 
-        block blk = allocate_block(n * sizeof(T));
+        auto block_size = n * sizeof(T);
+        block blk = allocate_block_impl(block_size, false);
+
+        if (blk.mem == nullptr) {
+            std::cout << "Failed to allocate memory" << std::endl; 
+            log(); 
+            return nullptr;
+        }
+
         return static_cast<T*>(blk.mem);
     }
     
@@ -624,12 +665,13 @@ class main_alloc : public allocator_base<T> {
     }
 
 
-    static void allocate_stack_memory(std::span<std::byte> stack_span) {
+    // Instead of passing on stack, pass in size and it will malloc
+    static void allocate_stack_memory(size_t size) {
         #ifdef DEBUG_ALLOCATORS
             log();
         #endif
 
-        stack.allocate_stack_memory(stack_span);
+        stack.allocate_stack_memory(size);
     }
 
     static void deallocate_stack_memory() {
@@ -652,18 +694,35 @@ class main_alloc : public allocator_base<T> {
         return true;
     }
     
+    // For some reason this function does not exist and will crash if you call it, even though its marked override >:(
     block allocate_block(size_t size) override {
         #ifdef DEBUG_ALLOCATORS
             log();
         #endif
 
+        return allocate_block_impl(size, false);
+    }
+
+    block allocate_block_impl(size_t size, bool no_stack) {
+        #ifdef DEBUG_ALLOCATORS
+            log();
+        #endif
+
+        block blk = {0, nullptr};
         if (size > size_t(1024 * 2)) {
-            return fat.allocate_block(size);
-        } else if (stack.can_allocate(size)) {
-            return stack.allocate_block(size);
+            blk = fat.allocate_block(size);
+            if (blk.mem == nullptr) {
+                std::cout << "Fat failed to allocate memory" << std::endl; log(); }
+        } else if (stack.can_allocate(size) && !no_stack) {
+            blk = stack.allocate_block(size);
+            if (blk.mem == nullptr) {
+                std::cout << "Stack failed to allocate memory" << std::endl; log(); }
         } else {
-            return mal.allocate_block(size);
+            blk = mal.allocate_block(size);
+            if (blk.mem == nullptr) {
+                std::cout << "Malloc failed to allocate memory" << std::endl; log(); }
         }
+        return blk;
     }
 
     void allocate_all() override  {
@@ -736,6 +795,8 @@ class main_alloc : public allocator_base<T> {
             log();
         #endif
     }
+
+
 
     static inline fat_allocator<void>   fat{};
     static inline stack_allocator<void> stack{};

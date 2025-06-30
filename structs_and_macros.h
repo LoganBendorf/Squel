@@ -1,16 +1,17 @@
 
 #pragma once
 
-#include "pch.h"
-
 #include "allocator_aliases.h"
+
+#include <vector>
+#include <string>
 
 class SQL_data_type_object;
 
 class table_info_object;
 using display_table = struct display_table {
     bool to_display;
-    UP<table_info_object> table_info;
+    SP<table_info_object> table_info;
 };
 
 struct test_container {

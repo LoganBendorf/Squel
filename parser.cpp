@@ -20,17 +20,10 @@ static size_t token_position = 0;
 
 static token prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
 
-static size_t g_loop_count = 0;
+extern avec<SP<table_object>> g_tables;
+extern std::vector<SP<evaluated_function_object>> g_functions;
 
-static avec<astring> table_names;
-static avec<astring> function_names;
-static avec<SP<table_object>> s_tables;
-static avec<SP<evaluated_function_object>> s_functions;
 
-struct numeric {
-    bool is_decimal;
-    std::string value;
-};
 
 static std::expected<UP<assert_object>, UP<error_object>> parse_assert();
 static void parse_alter();
@@ -40,17 +33,14 @@ static void parse_create();
 static void parse_create_or_replace_function();
 static void parse_create_table();
 
-// static bool is_numeric_identifier();
 static std::expected<UP<group_object>, UP<error_object>> parse_comma_seperated_list(token_type end_val);
 static std::expected<std::pair<UP<group_object>, token_type>, UP<error_object>> parse_comma_seperated_list_ADVANCED(const avec<token_type>& end_values); // Can add precedence as well if I feel like it
 
 static std::expected<UP<block_statement>, UP<error_object>> parse_function();
 static UP<object> prefix_parse(token tok);
 static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(UP<object> left);
-static UP<object> parse_expression(size_t precedence);
+[[nodiscard]] static UP<object> parse_expression(size_t precedence);
 
-static bool is_function_name(const std_and_astring_variant& name);
-static bool is_table_name(const std_and_astring_variant& name);
 
 static token peek();
 static token_type peek_type();
@@ -168,123 +158,90 @@ enum precedences : std::uint8_t {
     if (token_position >= tokens.size()) [[unlikely]]{  \
         push_err_ret_unx_err_obj(x);} 
 
-static bool is_function_name(const std_and_astring_variant& name) {
 
-    astring str;
-    VISIT(name, unwrapped,
-        str = unwrapped;
-    );
-
-    return std::ranges::find(function_names, str) != function_names.end();
-}
-
-static bool is_table_name(const std_and_astring_variant& name) {
-
-    astring str;
-    VISIT(name, unwrapped,
-        str = unwrapped;
-    );
-
-    return std::ranges::find(table_names, str) != table_names.end();
-}
-
-void parser_init(std::vector<token> toks, avec<SP<evaluated_function_object>>& g_funcs, avec<SP<table_object>> g_tabs) {
-    s_functions = g_funcs;
-    s_tables = g_tabs;
-
+void parser_init(std::vector<token> toks) {
     tokens = toks;
     token_position = 0;
-    prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
-    g_loop_count = 0;
-    function_names.clear();
-    table_names.clear();
-    nodes.clear();
+    prev_token = {.type=ERROR_TOKEN, .data=std::string("garbage"), .line=0, .position=0};
+
+    nodes = avec<UP<node>>();
 }
 
-
-// it token has parse function us it, else error
-// underscores are allowed in words
 avec<UP<node>> parse() {
+
     if (tokens.size() == 0) {
         errors.emplace_back("parse(): No tokens");
         return std::move(nodes);
     }
 
-    switch (peek_type()) {
-    case CREATE:
-        parse_create(); break;
-    case INSERT: {
+    size_t loop_count = 0;
 
-        auto result = parse_insert();
-        if (result.has_value()) {
-            nodes.emplace_back(UP<node>(new insert_into(std::move(*result))));
-        } else {
-            errors.emplace_back("parse_insert(): Returned error object");
-        }
-        
-    } break;
-    case SELECT: {
+    while (loop_count++ < 100) {
 
-        UP<object> result = parse_select();
+        switch (peek_type()) {
+        case CREATE:
+            parse_create(); break;
+        case INSERT: {
+            auto result = parse_insert();
+            if (result.has_value()) {
+                nodes.emplace_back(UP<node>(new insert_into(std::move(*result))));
+            } else {
+                errors.emplace_back("parse_insert(): Returned error object"); }
+        } break;
+        case SELECT: {
+            UP<object> result = parse_select();
+            if (result->type() == ERROR_OBJ) {
+                errors.emplace_back("parse_select(): Returned error object"); break; }
+            // Advance past semicolon
+            if (peek_type() != SEMICOLON) {
+                errors.emplace_back("parse_select(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
+            } else {
+                token_position++; }
 
-        if (result->type() == ERROR_OBJ) {
-            errors.emplace_back("parse_select(): Returned error object"); break;
-        }
-        // Advance past semicolon
-        if (peek_type() != SEMICOLON) {
-            errors.emplace_back("parse_select(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
-        } else {
-            token_position++;
-        }
-
-        switch(result->type()) {
-        case SELECT_OBJECT:
-            nodes.emplace_back(UP<node>(new select_node(std::move(result)))); break;
-        case SELECT_FROM_OBJECT:
-            nodes.emplace_back(UP<node>(new select_from(std::move(result)))); break;
-        default:
-            errors.emplace_back("parse_select(): Returned unknown object type");
-        } 
-         
-    } break;
-    case ALTER:
-        parse_alter(); break;
-    // Custom
-    case ASSERT: {
-        auto result = parse_assert();
-        if (!result.has_value()) {
-            errors.emplace_back("parse_assert(): Returned bad object!"); break; }
+            switch(result->type()) {
+            case SELECT_OBJECT:
+                nodes.emplace_back(UP<node>(new select_node(std::move(result)))); break;
+            case SELECT_FROM_OBJECT:
+                nodes.emplace_back(UP<node>(new select_from(std::move(result)))); break;
+            default:
+                errors.emplace_back("parse_select(): Returned unknown object type"); } 
             
-        // Advance past semicolon
-        if (peek_type() != SEMICOLON) {
-            errors.emplace_back("parse_assert(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
-        } else {
-            token_position++;
+        } break;
+        case ALTER:
+            parse_alter(); break;
+        // Custom
+        case ASSERT: {
+            auto result = parse_assert();
+            if (!result.has_value()) {
+                errors.emplace_back("parse_assert(): Returned bad object!"); break; }
+                
+            if (peek_type() != SEMICOLON) {
+                errors.emplace_back("parse_assert(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
+            } else {
+                token_position++; }
+
+            nodes.emplace_back(UP<node>(new assert_node(std::move(*result))));
+        } break;
+        default:
+            std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = "
+            + token_type_to_string(peek().type) + ". Line = " + std::to_string(peek().line) 
+            + ". Position = " + std::to_string(peek().position);
+            errors.emplace_back(error);
         }
 
-        nodes.emplace_back(UP<node>(new assert_node(std::move(*result))));
-    } break;
-    default:
-        std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = "
-        + token_type_to_string(peek().type) + ". Line = " + std::to_string(peek().line) 
-        + ". Position = " + std::to_string(peek().position);
-        errors.emplace_back(error);
-    }
-
-    if (!errors.empty()) {
-        // Look for end of statement ';', if it's there, go to it then continue looking for errors in the next statement
-        while (token_position < tokens.size() && peek_type() != SEMICOLON) {
-            token_position++;
+        if (!errors.empty()) {
+            // Look for end of statement ';', if it's there, go to it then continue looking for errors in the next statement
+            while (token_position < tokens.size() && peek_type() != SEMICOLON) {
+                token_position++; }
+            token_position++; // If at semicolon, advance past it
         }
-        token_position++; // If at semicolon, advance past it
+
+        if (peek_type() == LINE_END) {
+            break; }
     }
 
-    if (g_loop_count++ > 100) {
-        std::cout << "le stuck in loop?";}
-
-    if (peek_type() != LINE_END) {
-        parse();
-    }
+    if (loop_count == 100) {
+        std::cout << "le got stuck in loop?";}
 
     return std::move(nodes);
 }
@@ -358,8 +315,7 @@ static void parse_alter() {
 static std::expected<UP<group_object>, UP<error_object>> parse_values() {
 
     if (peek_type() != VALUES) {
-        push_err_ret_unx_err_obj("parse_values(): with non-VALUES TOKEN!!!!!!!!!!!!");
-    }
+        push_err_ret_unx_err_obj("parse_values(): with non-VALUES TOKEN!!!!!!!!!!!!");}
 
     advance_and_check_ret_unx_obj("Missing open parenthesis after VALUES");
 
@@ -399,9 +355,9 @@ static std::expected<UP<insert_into_object>, UP<error_object>> parse_insert() {
     if (peek_type() != STRING_LITERAL) {
         push_err_ret_unx_err_obj("INSERT INTO bad token type for table name");}
 
-    UP<object> table_name = parse_expression(HIGHEST);
-    if (table_name->type() != STRING_OBJ) { // For now must be string
-        push_err_ret_unx_err_obj("INSERT INTO: Failed to parse table name"); }
+    astring table_name = peek_data();
+
+    advance_and_check_ret_unx_obj("No open parenthesis after INSERT INTO table");
 
     if (peek_type() != OPEN_PAREN) {
         push_err_ret_unx_err_obj("No open parenthesis after INSERT INTO table");}
@@ -429,7 +385,7 @@ static std::expected<UP<insert_into_object>, UP<error_object>> parse_insert() {
 
     token_position++;
 
-    UP<insert_into_object> info = MAKE_UP(insert_into_object, std::move(table_name), std::move(fields), std::move(values));
+    UP<insert_into_object> info = MAKE_UP(insert_into_object, table_name, std::move(fields), std::move(values));
 
     return std::move(info);
 }
@@ -685,7 +641,7 @@ static void parse_create_or_replace_function() {
     if (peek_type() != STRING_LITERAL) {
         push_err_ret("Function name must be string literal"); }
 
-    astring name = peek().data;
+    astring name = peek_data();
 
     advance_and_check("No tokens after function name");
 
@@ -719,15 +675,6 @@ static void parse_create_or_replace_function() {
     UP<function_object> func = MAKE_UP(function_object, name, std::move(parameters), cast_UP<SQL_data_type_object>(return_type), cast_UP<block_statement>(func_body));
 
     UP<function> info = MAKE_UP(function, std::move(func));
-
-    bool found = false;
-    for (const auto& func_name : function_names) {
-        if (func_name == name) {
-            found = true; }
-    }
-
-    if (!found) {
-        function_names.push_back(name); }
     
     nodes.push_back(cast_UP<node>(info));
 }
@@ -741,9 +688,12 @@ static void parse_create_table() {
         
     advance_and_check("No tokens after CREATE TABLE");
 
-    UP<object> table_name = parse_expression(HIGHEST);
-    if (table_name->type() != STRING_OBJ) {
-        push_err_ret("Failed to parse table name"); }
+    if (peek_type() != STRING_LITERAL) {
+        push_err_ret("CREATE TABLE bad token type for table name");}
+
+    astring table_name = peek_data();
+
+    advance_and_check("No values after table name");
 
     if (peek_type() != OPEN_PAREN) {
         push_err_ret("No open paren '(' after CREATE TABLE");}
@@ -813,9 +763,7 @@ static void parse_create_table() {
 
     token_position++;
 
-    table_names.push_back(table_name->data());
-
-    UP<create_table> info = MAKE_UP(create_table, std::move(table_name), std::move(details));   
+    UP<create_table> info = MAKE_UP(create_table, table_name, std::move(details));   
 
     nodes.push_back(cast_UP<node>(info));
 }
@@ -1320,10 +1268,8 @@ static UP<object> parse_string_literal(token tok) {
     if (tok.data == "*") {
         return UP<object>(new star_object()); }
 
-    bool is_func = is_function_name(tok.data);
-    if (is_func) {
-        if (peek_type() != OPEN_PAREN) {
-            push_err_ret_err_obj("Function missing open parenthesis"); }
+
+    if (peek_type() == OPEN_PAREN) {
 
         advance_and_check_ret_obj("No values after open paren in function call");
 
@@ -1338,8 +1284,6 @@ static UP<object> parse_string_literal(token tok) {
     }
 
     if (peek_type() == DOT) {
-        if (!is_table_name(tok.data)) {
-            push_err_ret_err_obj("table.column: Table (" + tok.data + ") does not exist"); }
 
         advance_and_check_ret_obj("No values after dot");
 

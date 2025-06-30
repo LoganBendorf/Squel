@@ -1,13 +1,12 @@
 #pragma once
 
-#include "pch.h"
 #include "allocators.h"
 #include "allocator_aliases.h"
 #include "structs_and_macros.h"
 
 class object;
-class argument_object;
-class variable_object;
+class e_argument_object;
+class e_variable_object;
 class evaluated_function_object;
 class error_object;
 
@@ -54,18 +53,17 @@ class environment {
     [[nodiscard]] bool is_function(const std_and_astring_variant& name) const;
     [[nodiscard]] std::pair<SP<evaluated_function_object>, bool> get_function(const std_and_astring_variant& name) const;
 
-    bool add_variables(avec<UP<argument_object>>&& args);
-
-    UP<object> add_variable(variable_object* var);
-    UP<object> add_variable(UP<variable_object>&& var);
+    bool add_variables(avec<UP<e_argument_object>>&& args);
+    UP<object> add_variable(e_variable_object* var);
+    UP<object> add_variable(UP<e_variable_object>&& var);
 
     [[nodiscard]] bool is_variable(const astring& name) const;
-    [[nodiscard]] std::expected<UP<variable_object>, UP<error_object>> get_variable(const std_and_astring_variant& name) const;
+    [[nodiscard]] std::expected<UP<e_variable_object>, UP<error_object>> get_variable(const std_and_astring_variant& name) const;
     avec<astring> inspect_variables();
 
     public:
     SP<environment> parent;
     avec<SP<evaluated_function_object>> functions; 
-    avec<UP<variable_object>> variables;
+    avec<UP<e_variable_object>> variables;
 
 };

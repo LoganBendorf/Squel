@@ -12,6 +12,7 @@ binary="$1"; shift
 # generate *all* new suppressions, and disable the
 # 1 000-error cutoff:
 valgrind \
+  --tool=memcheck \
   --leak-check=full \
   --show-leak-kinds=all \
   --gen-suppressions=all \

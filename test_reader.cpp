@@ -39,13 +39,13 @@ std::vector<struct test_container> init_read_test() {
         exit(1);
     }
 
-    std::cout << "PRINTING TEST NAMES ------------\n";
-    for (const auto& test : tests) {
-        for (const auto& test_path : test.test_paths) {
-            std::cout << " " << test_path << std::endl;
-        }
-    }
-    std::cout << "DONE ---------------------------\n\n";
+    // std::cout << "PRINTING TEST NAMES ------------\n";
+    // for (const auto& test : tests) {
+    //     for (const auto& test_path : test.test_paths) {
+    //         std::cout << " " << test_path << std::endl;
+    //     }
+    // }
+    // std::cout << "DONE ---------------------------\n\n";
 
     return tests;
 }

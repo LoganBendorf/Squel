@@ -1,6 +1,4 @@
 
-#include <algorithm>
-
 #include "pch.h"
 
 #include "allocators.h"
@@ -12,12 +10,17 @@
 #include "evaluator.h"
 #include "print.h"
 #include "object.h"
+#include "node.h"
+#include "execute.h"
+
+import test;
+int main() { hello(); }
 
 std::vector<std::string> errors;
 std::vector<std::string> warnings;
 
-static avec<SP<table_object>> g_tables;
-static avec<SP<evaluated_function_object>> g_functions;
+avec<SP<table_object>> g_tables;
+std::vector<SP<evaluated_function_object>> g_functions;
 
 std::string input;
 
@@ -53,13 +56,7 @@ static auto toggle_show_test_children = [](QLayout* layout) {
     }
 };
 
-static void clear_g_tables() {
-    g_tables.clear();
-}
 
-static void clear_g_functions() {
-    g_functions.clear();
-}
 
 enum input_style : std::uint8_t {
     VISUAL, TEST
@@ -242,32 +239,38 @@ int main (int argc, char* argv[]) {
                     std::cout << "'" << input << "'\n";
                     std::cout << "DONE ---------------------------\n\n";
                         
-                    constexpr size_t size = 1 << 18;
-                    static std::array<std::byte, size> stack_buffer{};
-                    main_alloc<void>::allocate_stack_memory(std::span(stack_buffer));
+                    constexpr size_t size = 1 << 20;
+                    main_alloc<void>::allocate_stack_memory(size);
 
                     auto start = std::chrono::high_resolution_clock::now();
 
                     std::vector<token> tokens = lexer(input);
                     // print_tokens(tokens);
 
-                    parser_init(tokens, g_functions, g_tables);
+                    parser_init(tokens);
                     avec<UP<node>> nodes = parse();
-                    // print_nodes(nodes);
+                    print_nodes(nodes);
 
-                    SP<environment> env = eval_init(std::move(nodes), g_functions, g_tables);
-                    auto [funcs, tables] = eval(env);
-                    g_functions = std::move(funcs);
-                    g_tables = std::move(tables);
+                    eval_init(std::move(nodes));
+                    nodes.clear();
+                    avec<UP<e_node>> e_nodes = eval();
+
+                    execute_init(std::move(e_nodes));
+                    execute();
+                    e_nodes.clear();
+                    
+                    print_global_tables(g_tables);
+
 
                     auto end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double> elapsed = end - start;
                     std::cout << "Elapsed time: " << elapsed.count() * 1000 << " miliseconds\n";
 
-                    const auto mem_used = static_cast<char*>(main_alloc<void>::stack.top) - static_cast<char*>(main_alloc<void>::stack.base);
-                    std::cout << "Arena bytes used = " << mem_used << "\n";
+                    // const auto mem_used = static_cast<char*>(main_alloc<void>::stack.top) - static_cast<char*>(main_alloc<void>::stack.base);
+                    // std::cout << "Arena bytes used = " << mem_used << "\n";
 
-                    main_alloc<void>::deallocate_stack_memory();
+                    // Buggy with persistent objects
+                    // main_alloc<void>::deallocate_stack_memory();
             
                     if (!errors.empty()) {
                         display_errors(commands_results_label);
@@ -310,30 +313,28 @@ int main (int argc, char* argv[]) {
             std::cout << "No input\n";
             return;}
 
-        constexpr size_t size = 1 << 18;
-        static std::array<std::byte, size> stack_buffer{};
-        main_alloc<void>::allocate_stack_memory(std::span(stack_buffer));
+        
+        constexpr size_t size = 1 << 20;
+        main_alloc<void>::allocate_stack_memory(size);
 
         auto start = std::chrono::high_resolution_clock::now();
 
         std::vector<token> tokens = lexer(input);
         // print_tokens(tokens);
 
-        parser_init(tokens, g_functions, g_tables);
+        parser_init(tokens);
         avec<UP<node>> nodes = parse();
         // print_nodes(nodes);
 
-        SP<environment> env = eval_init(std::move(nodes), g_functions, g_tables);
-        auto [funcs, tables] = eval(env);
-        g_functions = std::move(funcs);
-        g_tables = std::move(tables);
+        eval_init(std::move(nodes));
+        avec<UP<e_node>> e_nodes = eval();
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
         std::cout << "Elapsed time: " << elapsed.count() * 1000 << " miliseconds\n";
 
-        const auto mem_used = static_cast<char*>(main_alloc<void>::stack.top) - static_cast<char*>(main_alloc<void>::stack.base);
-        std::cout << "Arena bytes used = " << mem_used << "\n";
+        // const auto mem_used = static_cast<char*>(main_alloc<void>::stack.top) - static_cast<char*>(main_alloc<void>::stack.base);
+        // std::cout << "Arena bytes used = " << mem_used << "\n";
 
         main_alloc<void>::deallocate_stack_memory();
 
@@ -353,11 +354,15 @@ int main (int argc, char* argv[]) {
 
     window.show();
 
-    
     auto qt_return = app.exec();
 
-    clear_g_functions();
-    clear_g_tables();
+    for (size_t i = 0; i < g_tables.size(); i++) {
+        if (g_tables[i].get() == nullptr) {
+            std::cout << "g_tables[" << i << "] was null" << std::endl; }
+    }
+
+    g_tables.clear();
+    g_functions.clear();
 
     return qt_return;
 }
@@ -383,9 +388,14 @@ static void display_errors(QGridLayout* commands_results_label) {
 static void display_graphical_table(QGridLayout* table_grid) {
     clear_layout(table_grid);  
                         
-    const UP<table_info_object>& tab_info = display_tab.table_info;
+    const SP<table_info_object>& tab_info = display_tab.table_info;
 
     const SP<table_object>& tab = tab_info->tab;
+
+    for (const auto& detail : tab->column_datas) {
+        if (detail == nullptr) {
+            std::cout << "bruh, " << std::source_location::current().line() << std::endl; }
+    }
 
     table_grid->addWidget(new QLabel(QString::fromStdString(std::string("Table: " + tab->table_name))), 0, 0); // err
 
@@ -431,5 +441,4 @@ static void display_graphical_table(QGridLayout* table_grid) {
         y++;
         x = 0;
     }
-
 }

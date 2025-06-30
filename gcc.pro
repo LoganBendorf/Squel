@@ -9,6 +9,9 @@ HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.
 HEADERS += Allocators/allocators.h  Allocators/allocator_aliases.h  Allocators/allocator_string.h
 TARGET = squel
 
+# Modules
+SOURCES += test_module.cppm
+
 DESTDIR = build
 OBJECTS_DIR = build
 

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "pch.h"
+#include <string>
+#include <cstdint>
 
 enum token_type : std::uint8_t {
     ERROR_TOKEN, CREATE, TABLE, SELECT, FROM, INSERT, INTO, VALUES, STRING_LITERAL, INTEGER_LITERAL, OPEN_PAREN, CLOSE_PAREN, SEMICOLON,

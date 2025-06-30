@@ -1,153 +1,142 @@
-
 #pragma once
-
-#include "pch.h"
 
 #include "allocators.h"
 
+#include <string>
+
 class astring {
 private:
-    std::string m_data;
-    main_alloc<char> alloc;
+    // Use the custom allocator for actual string storage
+    std::basic_string<char, std::char_traits<char>, main_alloc<char>> m_data;
     
 public:
-    // Default constructors (use  as default)
-    inline astring() : m_data(), alloc(main_alloc<char>{}) {}
-    inline astring(const char* str) : m_data(str), alloc(main_alloc<char>{}) {}
-    inline astring(const std::string& str) : m_data(str), alloc(main_alloc<char>{}) {}
-    inline astring(const astring& other) : m_data(other.m_data), alloc(other.alloc) {}
+    // Default constructors 
+    astring() : m_data(main_alloc<char>{}) {}
+    astring(const char* str) : m_data(str, main_alloc<char>{}) {}
+    astring(const std::string& str) : m_data(str.c_str(), main_alloc<char>{}) {}
+    astring(const astring& other) : m_data(other.m_data) {}
     
     // Constructor for main_alloc-allocated strings (from astringstream)
-    inline astring(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str) 
-        : m_data(str.c_str()), alloc(str.get_allocator()) {} 
+    astring(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str) 
+        : m_data(str) {} 
     
-    // Constructor for creating string with repeated character (fixes pad_length error)
-    inline astring(size_t count, char ch) : m_data(count, ch), alloc(main_alloc<char>{}) {}
-    inline astring(size_t count, char ch, const main_alloc<char>& a) : m_data(count, ch), alloc(a) {}
-
-    // Add this constructor for creating astring from char buffer with length
-    inline astring(const char* buffer, size_t length, const main_alloc<char>& a) 
-        : m_data(buffer, length), alloc(a) {}
+    // Constructor for creating string with repeated character
+    astring(size_t count, char ch) : m_data(count, ch, main_alloc<char>{}) {}
+    astring(size_t count, char ch, const main_alloc<char>& a) : m_data(count, ch, a) {}
     
-
-    // Arena-based constructors (taking main_alloc directly)
-    explicit inline astring(const main_alloc<char>& a) : m_data(), alloc(a) {}
-    inline astring(const char* str, const main_alloc<char>& a) : m_data(str), alloc(a) {}
-    inline astring(const std::string& str, const main_alloc<char>& a) : m_data(str), alloc(a) {}
-    inline astring(const astring& other, const main_alloc<char>& a) : m_data(other.m_data), alloc(a) {}
-    inline astring(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str, const main_alloc<char>& a) 
-        : m_data(str.c_str()), alloc(a) {}
+    // Constructor for creating astring from char buffer with length
+    astring(const char* buffer, size_t length, const main_alloc<char>& a) 
+        : m_data(buffer, length, a) {}
     
-    // Assignment operators - COPY both m_data and main_alloc
-    inline astring& operator=(const astring& other) {
+    
+    // Assignment operators
+    astring& operator=(const astring& other) {
         if (this != &other) {
             m_data = other.m_data;
-            alloc = other.alloc;  // Copy the main_alloc too
         }
         return *this;
     }
     
-    inline astring& operator=(const std::string& str) {
-        m_data = str;
-        // alloc stays the same (no main_alloc to copy from std::string)
+    astring& operator=(const std::string& str) {
+        m_data.assign(str.c_str());
         return *this;
     }
     
-    inline astring& operator=(const char* str) {
-        m_data = str;
-        // alloc stays the same (no main_alloc to copy from const char*)
+    astring& operator=(const char* str) {
+        m_data.assign(str);
         return *this;
     }
     
-    inline astring& operator=(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str) {
-        m_data = str.c_str();  // Convert to regular string
-        alloc = str.get_allocator();  // Copy the main_alloc allocator
+    astring& operator=(const std::basic_string<char, std::char_traits<char>, main_alloc<char>>& str) {
+        m_data = str;
         return *this;
     }
     
     // Move assignment
-    inline astring& operator=(astring&& other) noexcept {
+    astring& operator=(astring&& other) noexcept {
         if (this != &other) {
             m_data = std::move(other.m_data);
-            alloc = std::move(other.alloc);  // Move the main_alloc too
         }
         return *this;
     }
     
-    inline astring& operator=(std::string&& str) noexcept {
-        m_data = std::move(str);
-        // alloc unchanged
+    astring& operator=(std::string&& str) noexcept {
+        m_data.assign(str.c_str());
         return *this;
     }
     
     // Utility methods
-    inline const std::string& str() const { return m_data; }
-    inline const main_alloc<char>& get_allocator() const { return alloc; }
+    std::string str() const { return std::string(m_data.c_str()); }
+    main_alloc<char> get_allocator() const { return m_data.get_allocator(); }
     
-    // Public access to m_data for numeric conversions (fixes private access error)
-    inline const char* data() const { return m_data.data(); }
-    inline const std::string& get_data() const { return m_data; }
+    // Public access to m_data for numeric conversions
+    const char* data() const { return m_data.data(); }
+    const auto& get_data() const { return m_data; }
     
     // Forward common string operations
-    inline size_t size() const { return m_data.size(); }
-    inline size_t length() const { return m_data.length(); }
-    inline bool empty() const { return m_data.empty(); }
-    inline const char* c_str() const { return m_data.c_str(); }
-    inline char& operator[](size_t pos) { return m_data[pos]; }
-    inline const char& operator[](size_t pos) const { return m_data[pos]; }
+    size_t size() const { return m_data.size(); }
+    size_t length() const { return m_data.length(); }
+    bool empty() const { return m_data.empty(); }
+    const char* c_str() const { return m_data.c_str(); }
+    char& operator[](size_t pos) { return m_data[pos]; }
+    const char& operator[](size_t pos) const { return m_data[pos]; }
     
     // String operations that return new astring objects
-    inline astring substr(size_t pos = 0, size_t len = std::string::npos) const {
-        return astring(m_data.substr(pos, len), alloc);  // Use same main_alloc
+    astring substr(size_t pos = 0, size_t len = std::string::npos) const {
+        auto sub = m_data.substr(pos, len);
+        return astring(sub);
     }
     
-    inline size_t find(const std::string& str, size_t pos = 0) const {
-        return m_data.find(str, pos);
+    size_t find(const std::string& str, size_t pos = 0) const {
+        return m_data.find(str.c_str(), pos);
     }
     
-    inline size_t find(const char* s, size_t pos = 0) const {
+    size_t find(const char* s, size_t pos = 0) const {
         return m_data.find(s, pos);
     }
     
     // Concatenation operators
-    inline astring operator+(const astring& other) const {
-        return astring(m_data + other.m_data, alloc);  // Use this object's main_alloc
+    astring operator+(const astring& other) const {
+        auto result = m_data + other.m_data;
+        return astring(result);
     }
     
-    inline astring operator+(const std::string& str) const {
-        return astring(m_data + str, alloc);
+    astring operator+(const std::string& str) const {
+        auto result = m_data + str.c_str();
+        return astring(result);
     }
     
-    inline astring operator+(const char* str) const {
-        return astring(m_data + str, alloc);
+    astring operator+(const char* str) const {
+        auto result = m_data + str;
+        return astring(result);
     }
     
-    inline astring& operator+=(const astring& other) {
+    astring& operator+=(const astring& other) {
         m_data += other.m_data;
         return *this;
     }
     
-    inline astring& operator+=(const std::string& str) {
-        m_data += str;
+    astring& operator+=(const std::string& str) {
+        m_data += str.c_str();
         return *this;
     }
     
-    inline astring& operator+=(const char* str) {
+    astring& operator+=(const char* str) {
         m_data += str;
         return *this;
     }
     
     // Comparison operators
-    inline bool operator==(const astring& other) const { return m_data == other.m_data; }
-    inline bool operator==(const std::string& str) const { return m_data == str; }
-    inline bool operator==(const char* str) const { return m_data == str; }
-    
-    inline bool operator!=(const astring& other) const { return !(*this == other); }
-    inline bool operator!=(const std::string& str) const { return !(*this == str); }
-    inline bool operator!=(const char* str) const { return !(*this == str); }
+    bool operator==(const astring& other) const { return m_data == other.m_data; }
+    bool operator==(const std::string& str) const { return m_data == str.c_str(); }
+    bool operator==(const char* str) const { return m_data == str; }
+
+    bool operator!=(const astring& other) const { return !(*this == other); }
+    bool operator!=(const std::string& str) const { return !(*this == str); }
+    bool operator!=(const char* str) const { return !(*this == str); }
     
     // Conversion operators
-    inline operator const std::string&() const { return m_data; }
+    operator std::string() const { return std::string(m_data.c_str()); }
     
     // Stream output
     friend std::ostream& operator<<(std::ostream& os, const astring& str) {
@@ -157,9 +146,13 @@ public:
 
 // Global operators for reverse concatenation
 inline astring operator+(const char* lhs, const astring& rhs) {
-    return astring(lhs + rhs.str(), rhs.get_allocator());
+    std::basic_string<char, std::char_traits<char>, main_alloc<char>> temp(lhs, rhs.get_allocator());
+    temp += rhs.get_data();
+    return astring(temp);
 }
 
 inline astring operator+(const std::string& lhs, const astring& rhs) {
-    return astring(lhs + rhs.str(), rhs.get_allocator());
+    std::basic_string<char, std::char_traits<char>, main_alloc<char>> temp(lhs.c_str(), rhs.get_allocator());
+    temp += rhs.get_data();
+    return astring(temp);
 }

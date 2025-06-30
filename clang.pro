@@ -1,9 +1,9 @@
 QT += widgets
 TEMPLATE = app
 INCLUDEPATH += $$PWD/Allocators
-SOURCES += object.cpp node.cpp environment.cpp evaluator.cpp parser.cpp main.cpp helpers.cpp lexer.cpp print.cpp test_reader.cpp
+SOURCES += object.cpp node.cpp environment.cpp execute.cpp evaluator.cpp parser.cpp main.cpp helpers.cpp lexer.cpp print.cpp test_reader.cpp
 #SOURCES += Allocators/allocators.cpp
-HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h
+HEADERS += pch.h evaluator.h   helpers.h   lexer.h node.h execute.h object.h parser.h pch.h print.h structs_and_macros.h test_reader.h token.h environment.h
 HEADERS += Allocators/allocators.h  Allocators/allocator_aliases.h  Allocators/allocator_string.h
 TARGET = squel
 DESTDIR = build
@@ -29,7 +29,7 @@ QMAKE_CXXFLAGS += -std=c++23
 QMAKE_CXXFLAGS += -O0
 
 # Sanitizers
-QMAKE_LFLAGS += -fsanitize=address
+QMAKE_LFLAGS += -fsanitize=address,undefined
 QMAKE_LFLAGS += -fsanitize=signed-integer-overflow
 
 # Warning flags for Clang
@@ -60,12 +60,13 @@ QMAKE_CXXFLAGS += -Wno-dollar-in-identifier-extension
 
 
 # Debug flags
-#CONFIG += debug
-#QMAKE_CXXFLAGS += -g
-#QMAKE_CXXFLAGS += -g3
-#QMAKE_CXXFLAGS += -fno-omit-frame-pointer 
-#QMAKE_CXXFLAGS += -funwind-tables
-#QMAKE_CXXFLAGS += -ggdb3
+CONFIG += debug
+QMAKE_CXXFLAGS += -g
+QMAKE_CXXFLAGS += -g3
+QMAKE_CXXFLAGS += -fno-omit-frame-pointer 
+QMAKE_CXXFLAGS += -fno-optimize-sibling-calls
+QMAKE_CXXFLAGS += -funwind-tables
+QMAKE_CXXFLAGS += -ggdb3
 
 # Compiler profiler
 #QMAKE_CXXFLAGS += -ftime-report

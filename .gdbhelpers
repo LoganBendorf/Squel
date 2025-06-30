@@ -1,0 +1,29 @@
+# Custom unique_ptr helpers for your project
+define inspect_up_raw
+  set $ptr = $arg0.__ptr_.__value_
+  call $ptr->inspect()
+end
+
+define inspect_up
+  set $ptr = $arg0.__ptr_.__value_
+  set $result = $ptr->inspect()
+  if $result.m_data.__r_.__value_.__s.__is_long_ == 0
+    printf "%s\n", $result.m_data.__r_.__value_.__s.__data_
+  else
+    printf "%s\n", $result.m_data.__r_.__value_.__l.__data_
+  end
+end
+
+define type_up
+  set $ptr = $arg0.__ptr_.__value_
+  call $ptr->type()
+end
+
+define debug_up
+  set $ptr = $arg0.__ptr_.__value_
+  printf "Address: %p\n", $ptr
+  printf "Type: "
+  call $ptr->type()
+  printf "Content: "
+  call $ptr->inspect()
+end

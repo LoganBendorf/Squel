@@ -1,16 +1,13 @@
 #pragma once
 
-#include "pch.h"
-
 #include "allocator_aliases.h"
 #include "node.h"
 
-// class evaluated_function_object;
-class node;
+#include <vector>
 
-// class table_object;
+class node;
 struct token;
 
-void parser_init(std::vector<token> toks, avec<SP<evaluated_function_object>>& g_funcs, avec<SP<table_object>> g_tabs);
+void parser_init(std::vector<token> toks);
 avec<UP<node>> parse();
 

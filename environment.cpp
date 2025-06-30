@@ -95,27 +95,27 @@ std::pair<SP<evaluated_function_object>, bool> environment::get_function(const s
     return {nullptr, false};
 }
 
-bool environment::add_variables(avec<UP<argument_object>>&& args) {
+bool environment::add_variables(avec<UP<e_argument_object>>&& args) {
     for (const auto& arg : args) {
         if (is_variable(arg->name)) {
             return false; }
     }
 
     for (auto& arg : std::move(args)) {
-        auto variable = MAKE_UP(variable_object, arg->name, std::move(arg->value));
+        auto variable = MAKE_UP(e_variable_object, arg->name, std::move(arg->value));
         variables.push_back(std::move(variable));
     }
     return true;
 }
 
-UP<object> environment::add_variable(variable_object* var) {
+UP<object> environment::add_variable(e_variable_object* var) {
     if (is_variable(var->name)) {
         return UP<object>(new error_object("Failed to add variable (" + var->inspect() + ") to environment")); }
 
-    variables.push_back(UP<variable_object>(var));
+    variables.push_back(UP<e_variable_object>(var));
     return UP<object>(new null_object());
 }
-UP<object> environment::add_variable(UP<variable_object>&& var) {
+UP<object> environment::add_variable(UP<e_variable_object>&& var) {
     if (is_variable(var->name)) {
         return UP<object>(new error_object("Failed to add variable (" + var->inspect() + ") to environment")); }
 
@@ -136,7 +136,7 @@ bool environment::is_variable(const astring& name) const {
     return false;
 }
 
-std::expected<UP<variable_object>, UP<error_object>> environment::get_variable(const std_and_astring_variant& name) const {
+std::expected<UP<e_variable_object>, UP<error_object>> environment::get_variable(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
     VISIT(name, unwrapped,
@@ -145,7 +145,7 @@ std::expected<UP<variable_object>, UP<error_object>> environment::get_variable(c
 
     for (const auto& var : variables) {
         if (var->name == unwrapped_name) {
-            return UP<variable_object>(var->clone());
+            return UP<e_variable_object>(var->clone());
         }
     }
 

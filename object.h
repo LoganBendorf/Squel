@@ -3,20 +3,14 @@
 // objects are made in the parser, used to parse and return values from expressions
     // i.e (10 + 10) will return an integer_object with the value 20
 
-#include "pch.h"
-
 #include "token.h"
 #include "allocators.h"
 #include "allocator_aliases.h"
 #include "structs_and_macros.h" // For table
 
+#include <expected>
+#include <charconv>
 
-/*
-    UP Clone (hopefully)
-std::unique_ptr<Base> clone() const override {
-    return std::unique_ptr<Derived(new Dervied(my_foo, my_bar))); 
-}
-*/
 
 
 
@@ -31,7 +25,10 @@ enum object_type : std::uint8_t {
     INSERT_INTO_OBJECT, SELECT_OBJECT, SELECT_FROM_OBJECT,
 
     // EVALUATED
-    EVALUATED_COLUMN_INDEX_OBJECT, EXPRESSION_STATEMENT, E_SQL_DATA_TYPE_OBJ, E_GROUP_OBJ,
+    E_COLUMN_INDEX_OBJECT, EXPRESSION_STATEMENT, E_SQL_DATA_TYPE_OBJ, E_GROUP_OBJ, E_FUNCTION_CALL_OBJ,
+    E_ARGUMENT_OBJ, E_VARIABLE_OBJ, E_PARAMETER_OBJ, E_BLOCK_STATEMENT, E_TABLE_DETAIL_OBJECT, E_RETURN_STATEMENT, E_SELECT_FROM_OBJECT,
+    E_INFIX_EXPRESSION_OBJ, E_PREFIX_EXPRESSION_OBJ, E_INSERT_INTO_OBJECT,
+    
 
     // CUSTOM
 
@@ -138,10 +135,15 @@ class object {
     [[nodiscard]] virtual astring data() const = 0;    
     [[nodiscard]] virtual object* clone() const = 0;    
     virtual ~object() noexcept = default; 
+
+
+    object() = default; 
+    object(const object&) = delete;
+    object& operator=(const object&) = delete;
     
 
-    static void* operator new(size_t size) {
-        return object_allocator_alias.allocate_block(size).mem;
+    static void* operator new(size_t size, bool no_stack = false) {
+        return object_allocator_alias.allocate_block_impl(size, no_stack).mem;
     }
 
     static void operator delete(void* ptr, std::size_t size) noexcept {
@@ -150,8 +152,8 @@ class object {
         object_allocator_alias.deallocate_block({size, ptr});
     }
     
-    static void* operator new[](std::size_t size) {
-        return object_allocator_alias.allocate_block(size).mem;
+    static void* operator new[](std::size_t size, bool no_stack = false) {
+        return object_allocator_alias.allocate_block_impl(size, no_stack).mem;
     }
     
     static void operator delete[](void* ptr, std::size_t size) noexcept {
@@ -184,7 +186,7 @@ class operator_object : virtual public evaluated {
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] object_type type() const override;
     [[nodiscard]] astring data() const override;
-    [[nodiscard]]operator_object* clone() const override;
+    [[nodiscard]] operator_object* clone() const override;
 
     public:
     operator_type op_type;
@@ -212,13 +214,20 @@ class table_info_object : virtual public evaluated {
 
 
 class expression_object : public object {
+
     public:
     virtual ~expression_object() noexcept = default;
-
-    [[nodiscard]] virtual astring inspect() const = 0;
-    [[nodiscard]] virtual object_type type() const = 0;
-    [[nodiscard]] virtual astring data() const = 0;
     [[nodiscard]] virtual expression_object* clone() const = 0;
+
+    public:
+    [[nodiscard]] virtual operator_type get_op_type() const = 0; // <--- The reason why this exists
+};
+
+class e_expression_object : virtual public evaluated {
+
+    public:
+    virtual ~e_expression_object() noexcept = default;
+    [[nodiscard]] virtual e_expression_object* clone() const = 0;
 
     public:
     [[nodiscard]] virtual operator_type get_op_type() const = 0; // <--- The reason why this exists
@@ -244,6 +253,26 @@ class infix_expression_object : public expression_object {
     UP<object> right;
 };
 
+class e_infix_expression_object : virtual public e_expression_object {
+
+    public:
+    e_infix_expression_object(operator_object* set_op, evaluated* set_left, evaluated* set_right);
+    e_infix_expression_object(UP<operator_object> set_op, UP<evaluated> set_left, UP<evaluated> set_right);
+    ~e_infix_expression_object() noexcept override = default;
+    
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_infix_expression_object* clone() const override;
+
+    [[nodiscard]] operator_type get_op_type() const override;
+
+    public:
+    UP<operator_object> op;
+    UP<evaluated> left;
+    UP<evaluated> right;
+};
+
 class prefix_expression_object : public expression_object {
 
     public:
@@ -261,6 +290,25 @@ class prefix_expression_object : public expression_object {
     public:
     UP<operator_object> op;
     UP<object> right;
+};
+
+class e_prefix_expression_object : virtual public e_expression_object {
+
+    public:
+    e_prefix_expression_object(operator_object* set_op, evaluated* set_right);
+    e_prefix_expression_object(UP<operator_object> set_op, UP<evaluated> set_right);
+    ~e_prefix_expression_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_prefix_expression_object* clone() const override;
+
+    [[nodiscard]] operator_type get_op_type() const override;
+
+    public:
+    UP<operator_object> op;
+    UP<evaluated> right;
 };
 
 class integer_object : virtual public evaluated {
@@ -362,6 +410,23 @@ class argument_object : public object {
     UP<object> value;
 };
 
+class e_argument_object : virtual public evaluated {
+
+    public:
+    e_argument_object(const std_and_astring_variant& set_name, evaluated* val);
+    e_argument_object(const std_and_astring_variant& set_name, UP<evaluated> val);
+    ~e_argument_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_argument_object* clone() const override;
+
+    public:
+    astring name;
+    UP<evaluated> value;
+};
+
 
 class variable_object : public object {
 
@@ -378,6 +443,23 @@ class variable_object : public object {
     public:
     astring name;
     UP<object> value;
+};
+
+class e_variable_object : virtual public evaluated {
+
+    public:
+    e_variable_object(const std_and_astring_variant& set_name, evaluated* val);
+    e_variable_object(const std_and_astring_variant& set_name, UP<evaluated> val);
+    ~e_variable_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_variable_object* clone() const override;
+
+    public:
+    astring name;
+    UP<evaluated> value;
 };
 
 class boolean_object : virtual public evaluated {
@@ -429,7 +511,7 @@ class e_SQL_data_type_object : virtual public evaluated {
     UP<evaluated> parameter;
 };
 
-class parameter_object : virtual public evaluated {
+class parameter_object : public object {
 
     public:
     parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type);
@@ -446,17 +528,52 @@ class parameter_object : virtual public evaluated {
     UP<SQL_data_type_object> data_type;
 };
 
-class table_detail_object : virtual public evaluated {
+class e_parameter_object : virtual public evaluated {
 
     public:
-    table_detail_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* set_data_type, evaluated* set_default_value);
-    table_detail_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> set_data_type, UP<evaluated> set_default_value);
+    e_parameter_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* set_data_type);
+    e_parameter_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> set_data_type);
+    ~e_parameter_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_parameter_object* clone() const override;
+
+    public:
+    astring name;
+    UP<e_SQL_data_type_object> data_type;
+};
+
+class table_detail_object : public object {
+
+    public:
+    table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value);
+    table_detail_object(const std_and_astring_variant& set_name, UP<SQL_data_type_object> set_data_type, UP<object> set_default_value);
     ~table_detail_object() noexcept override = default;
 
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] object_type type() const override;
     [[nodiscard]] astring data() const override;
     [[nodiscard]] table_detail_object* clone() const override;
+
+    public:
+    astring name;
+    UP<SQL_data_type_object> data_type;
+    UP<object> default_value;
+};
+
+class e_table_detail_object : virtual public evaluated {
+
+    public:
+    e_table_detail_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* set_data_type, evaluated* set_default_value);
+    e_table_detail_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> set_data_type, UP<evaluated> set_default_value);
+    ~e_table_detail_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_table_detail_object* clone() const override;
 
     public:
     astring name;
@@ -481,7 +598,7 @@ class group_object : public object {
     avec<UP<object>> elements;
 };
 
-class e_group_object : public object {
+class e_group_object : virtual public evaluated {
 
     public:
     e_group_object(evaluated* obj);
@@ -519,13 +636,12 @@ class function_object : public object { //!!MAJOR, switched body and return type
     UP<block_statement> body;
 };
 
+class e_block_statement;
 class evaluated_function_object : virtual public evaluated {
 
     public:
-    evaluated_function_object(const std_and_astring_variant& set_name, avec<UP<parameter_object>>&& set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body);
-    evaluated_function_object(const std_and_astring_variant& set_name, avec<UP<parameter_object>>&& set_parameters, UP<SQL_data_type_object> set_return_type, UP<block_statement> set_body);
-    evaluated_function_object(function_object* func, avec<UP<parameter_object>>&& new_parameters);
-    evaluated_function_object(UP<function_object>&& func, avec<UP<parameter_object>>&& new_parameters);
+    evaluated_function_object(const std_and_astring_variant& set_name, avec<UP<e_parameter_object>>&& set_parameters, e_SQL_data_type_object* set_return_type, e_block_statement* set_body);
+    evaluated_function_object(const std_and_astring_variant& set_name, avec<UP<e_parameter_object>>&& set_parameters, UP<e_SQL_data_type_object> set_return_type, UP<e_block_statement> set_body);
     ~evaluated_function_object() noexcept override = default;
 
     [[nodiscard]] astring inspect() const override;
@@ -535,9 +651,9 @@ class evaluated_function_object : virtual public evaluated {
 
     public:
     astring name;
-    avec<UP<parameter_object>> parameters;
-    UP<SQL_data_type_object> return_type;
-    UP<block_statement> body;
+    avec<UP<e_parameter_object>> parameters;
+    UP<e_SQL_data_type_object> return_type;
+    UP<e_block_statement> body;
 };
 
 class function_call_object : public object {
@@ -555,6 +671,23 @@ class function_call_object : public object {
     public:
     astring name;
     UP<group_object> arguments;
+};
+
+class e_function_call_object : virtual public evaluated {
+
+    public:
+    e_function_call_object(const std_and_astring_variant& set_name, e_group_object* args);
+    e_function_call_object(const std_and_astring_variant& set_name, UP<e_group_object> args);
+    ~e_function_call_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_function_call_object* clone() const override;
+
+    public:
+    astring name;
+    UP<e_group_object> arguments;
 };
 
 
@@ -577,16 +710,17 @@ class column_object: public object {
     UP<object> default_value;
 };
 
-class values_wrapper_object : public object {
+class values_wrapper_object : virtual public evaluated {
 
     public:
-    avec<UP<object>> values;
+    values_wrapper_object(avec<UP<evaluated>>&& set_values) : values(std::move(set_values)) {}
+    avec<UP<evaluated>> values;
 };
 
 class column_values_object: public values_wrapper_object {
 
     public:
-    column_values_object(avec<UP<object>>&& set_values);
+    column_values_object(avec<UP<evaluated>>&& set_values);
     ~column_values_object() noexcept override = default;
 
     [[nodiscard]] astring inspect() const override;
@@ -598,10 +732,8 @@ class column_values_object: public values_wrapper_object {
 class evaluated_column_object: virtual public evaluated {
 
     public:
-    evaluated_column_object(const std_and_astring_variant& set_name, SQL_data_type_object* type, 
-                            const std_and_astring_variant& set_default_value);
-    evaluated_column_object(const std_and_astring_variant& set_name, UP<SQL_data_type_object> type, 
-                            const std_and_astring_variant& set_default_value);
+    evaluated_column_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* type, evaluated* set_default_value);
+    evaluated_column_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> type, UP<evaluated> set_default_value);
     ~evaluated_column_object() noexcept override = default;
 
     [[nodiscard]] astring inspect() const override;
@@ -611,8 +743,8 @@ class evaluated_column_object: virtual public evaluated {
 
     public:
     astring name;
-    UP<SQL_data_type_object> data_type;
-    astring default_value;
+    UP<e_SQL_data_type_object> data_type;
+    UP<evaluated> default_value;
 };
 
 class error_object : virtual public evaluated {
@@ -678,26 +810,21 @@ class e_column_index_object : virtual public evaluated {
 
     public:
     SP<table_object> table;
-    UP<index_object> column_index;
+    UP<index_object> index;
 };
 
 class table_object : virtual public evaluated {
 
-    public:
-    static void* operator new(std::size_t size) {
-        return ::operator new(size);
-    }
-
-    static void operator delete(void* ptr) noexcept {
-        ::operator delete(ptr);
-    }
 
     public:
-    table_object(const std_and_astring_variant& set_table_name, table_detail_object* set_column_datas, e_group_object* set_rows);
-    table_object(const std_and_astring_variant& set_table_name, UP<table_detail_object> set_column_datas, UP<e_group_object> set_rows);
-    table_object(const std_and_astring_variant& set_table_name, avec<UP<table_detail_object>>&& set_column_datas);
-    table_object(const std_and_astring_variant& set_table_name, avec<UP<table_detail_object>>&& set_column_datas, avec<UP<e_group_object>>&& set_rows);
+    table_object(const std_and_astring_variant& set_table_name, e_table_detail_object* set_column_datas, e_group_object* set_rows);
+    table_object(const std_and_astring_variant& set_table_name, UP<e_table_detail_object> set_column_datas, UP<e_group_object> set_rows);
+    table_object(const std_and_astring_variant& set_table_name, avec<UP<e_table_detail_object>>&& set_column_datas);
+    table_object(const std_and_astring_variant& set_table_name, avec<UP<e_table_detail_object>>&& set_column_datas, avec<UP<e_group_object>>&& set_rows);
     ~table_object() noexcept override = default;
+
+    table_object(const table_object&) = delete;
+    table_object& operator=(const table_object&) = delete;
 
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] object_type type() const override;
@@ -709,16 +836,17 @@ class table_object : virtual public evaluated {
     [[nodiscard]] std::pair<astring, bool>                      get_column_name(size_t index)           const;
     [[nodiscard]] std::pair<UP<e_SQL_data_type_object>, bool>   get_column_data_type(size_t index)      const;
     [[nodiscard]] std::pair<size_t, bool>                       get_column_index(const std_and_astring_variant& name) const;
-    [[nodiscard]] std::expected<UP<evaluated>, UP<error_object>>get_column_default_value(size_t row_index)            const;
+    [[nodiscard]] std::expected<UP<evaluated>, UP<error_object>>get_cloned_column_default_value(size_t index)     const;
     [[nodiscard]] std::pair<UP<evaluated>, bool>                get_cell_value(size_t row_index, size_t col_index)    const;
     [[nodiscard]] std::expected<avec<UP<evaluated>>*, UP<error_object>> get_row_vec_ptr(size_t index)   const;
     [[nodiscard]] avec<size_t>                                  get_row_ids()                           const;
+    [[nodiscard]] astring                                       get_tab_name()                     const;
 
     [[nodiscard]] bool check_if_field_name_exists(const std_and_astring_variant& name) const;
 
     public:
     astring table_name;
-    avec<UP<table_detail_object>> column_datas;
+    avec<UP<e_table_detail_object>> column_datas;
     avec<UP<e_group_object>> rows;
 };
 
@@ -739,6 +867,7 @@ class table_aggregate_object : virtual public evaluated {
     [[nodiscard]] avec<size_t> get_all_col_ids() const;
     [[nodiscard]] std::pair<size_t, bool> get_last_col_id() const;
     [[nodiscard]] std::pair<astring, bool> get_table_name(size_t index) const;
+    [[nodiscard]] std::pair<SP<table_object>, bool> get_table(size_t index) const;
     [[nodiscard]] SP<table_object> combine_tables(const std_and_astring_variant& name) const;
     void add_table(table_object* table);
     void add_table(const SP<table_object>& table);
@@ -751,8 +880,8 @@ class table_aggregate_object : virtual public evaluated {
 class insert_into_object : public object {
 
     public:
-    insert_into_object(object* set_table_name, avec<UP<object>>&& set_fields, object* set_values);
-    insert_into_object(UP<object> set_table_name, avec<UP<object>>&& set_fields, UP<object> set_values);
+    insert_into_object(const std_and_astring_variant& set_table_name, avec<UP<object>>&& set_fields, object* set_values);
+    insert_into_object(const std_and_astring_variant& set_table_name, avec<UP<object>>&& set_fields, UP<object> set_values);
     ~insert_into_object() noexcept override = default;
 
     [[nodiscard]] astring inspect() const override;
@@ -761,9 +890,26 @@ class insert_into_object : public object {
     [[nodiscard]] insert_into_object* clone() const override;
 
     public:
-    UP<object> table_name;
+    astring table_name;
     avec<UP<object>> fields;
     UP<object> values;
+};
+
+class e_insert_into_object : virtual public evaluated {
+
+    public:
+    e_insert_into_object(astring set_table_name, avec<UP<evaluated>>&& set_fields, avec<UP<evaluated>>&& set_values);
+    ~e_insert_into_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_insert_into_object* clone() const override;
+
+    public:
+    astring table_name;
+    avec<UP<evaluated>> fields;
+    avec<UP<evaluated>> values;
 };
 
 class select_object : public object {
@@ -798,6 +944,22 @@ class select_from_object : public object {
     avec<UP<object>> clause_chain;
 };
 
+class e_select_from_object : virtual public evaluated {
+    
+    public:
+    e_select_from_object(avec<UP<evaluated>>&& set_column_indexes, avec<UP<evaluated>>&& set_clause_chain);
+    ~e_select_from_object() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_select_from_object* clone() const override;
+
+    public:
+    avec<UP<evaluated>> column_indexes;
+    avec<UP<evaluated>> clause_chain;
+};
+
 
 
 // Statements
@@ -816,12 +978,27 @@ class block_statement : public object {
     avec<UP<object>> body;
 };
 
-class return_statement;
+class e_block_statement : virtual public evaluated {
+
+    public:
+    e_block_statement(avec<UP<evaluated>>&& set_body);
+    ~e_block_statement() noexcept override = default;
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_block_statement* clone() const override;
+
+    public:
+    avec<UP<evaluated>> body;
+};
+
+class e_return_statement;
 class expression_statement : virtual public evaluated {
 
     public:
-    expression_statement(avec<UP<object>>&& set_body, return_statement* set_ret_val);
-    expression_statement(avec<UP<object>>&& set_body, UP<return_statement> set_ret_val);
+    expression_statement(avec<UP<evaluated>>&& set_body, e_return_statement* set_ret_val);
+    expression_statement(avec<UP<evaluated>>&& set_body, UP<e_return_statement> set_ret_val);
     ~expression_statement() noexcept override = default;
 
     [[nodiscard]] astring inspect() const override;
@@ -830,8 +1007,8 @@ class expression_statement : virtual public evaluated {
     [[nodiscard]] expression_statement* clone() const override;
 
     public:
-    avec<UP<object>> body;
-    UP<return_statement> ret_val;
+    avec<UP<evaluated>> body;
+    UP<e_return_statement> ret_val;
 };
 
 class if_statement : public object {
@@ -870,7 +1047,7 @@ class end_statement : virtual public evaluated {
     [[nodiscard]] end_statement* clone() const override;
 };
 
-class return_statement : virtual public evaluated {
+class return_statement : public object {
 
     public:
     return_statement(object* expr);
@@ -884,6 +1061,22 @@ class return_statement : virtual public evaluated {
 
     public:
     UP<object> expression;
+};
+
+class e_return_statement : virtual public evaluated {
+
+    public:
+    e_return_statement(evaluated* expr);
+    e_return_statement(UP<evaluated> expr);
+    ~e_return_statement() noexcept override = default;
+    
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] object_type type() const override;
+    [[nodiscard]] astring data() const override;
+    [[nodiscard]] e_return_statement* clone() const override;
+
+    public:
+    UP<evaluated> expression;
 };
 
 

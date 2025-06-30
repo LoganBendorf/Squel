@@ -1,9 +1,12 @@
 #pragma once
 
-#include "pch.h"
-
 #include "allocator_string.h"
 #include "allocator_structs.h"
+
+#include <memory>
+#include <vector>
+#include <string>
+#include <variant>
 
 template<typename T>
 class main_alloc;
@@ -36,21 +39,40 @@ UP<To> cast_UP( UP<From>& ptr ) {
 
 template<typename To, typename From>
 UP<To> cast_UP( UP<From>&& ptr ) {
-    return UP<To>( static_cast<To*>( ptr.release() ) );
+    if constexpr (std::is_convertible_v<From*, To*>) {
+        return UP<To>(static_cast<To*>(ptr.release()));
+    } else {
+        // Fall back to dynamic_cast
+        To* casted = dynamic_cast<To*>(ptr.get());
+        if (casted) {
+            ptr.release();
+            return UP<To>(casted);
+        }
+        return nullptr;
+    }
 }
+
+
 
 template<typename T>
 using SP = std::shared_ptr<T>;
 
 template<typename To, typename From>
-SP<To> cast_SP( SP<From>& ptr ) {
-    // simply move it for them
-    return cast_SP<To>( std::move(ptr) );
+SP<To> cast_SP(const SP<From>& ptr) {
+    if constexpr (std::is_convertible_v<From*, To*>) {
+        // Static cast - safe conversion
+        return std::static_pointer_cast<To>(ptr);
+    } else {
+        // Dynamic cast - runtime type checking
+        return std::dynamic_pointer_cast<To>(ptr);
+    }
 }
 
 template<typename To, typename From>
-SP<To> cast_SP( SP<From>&& ptr ) {
-    return SP<To>( static_cast<To*>( ptr.release() ) );
+SP<To> cast_SP(SP<From>&& ptr) {
+    // For rvalue references, we can still use the same logic
+    // The shared_ptr will handle the move semantics internally
+    return cast_SP<To>(ptr);
 }
 
 // For custom allocator (more complex)
