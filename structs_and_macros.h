@@ -6,9 +6,8 @@
 #include <vector>
 #include <string>
 
-class SQL_data_type_object;
+import object;
 
-class table_info_object;
 using display_table = struct display_table {
     bool to_display;
     SP<table_info_object> table_info;

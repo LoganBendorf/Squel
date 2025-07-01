@@ -1,11 +1,14 @@
+module;
 
 #include "pch.h"
 
-#include "print.h"
-
-#include "helpers.h"
 #include "structs_and_macros.h"
-#include "node.h"
+#include "token.h"
+
+import helpers;
+import node;
+
+module print;
 
 void print_tokens(const std::vector<token>& tokens) {
     std::cout << "PRINTING TOKENS ----------------\n";

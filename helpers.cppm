@@ -1,16 +1,19 @@
-#pragma once
+module;
 
 #include "token.h"
 #include "allocator_aliases.h"
 
 #include <string>
 #include <span>
+#include <cstddef>
 
-#define SIZE_T_MAX size_t(-1)
+import object;
 
-class object;
-class evaluated;
-class SQL_data_type_object;
+export module helpers;
+
+export {
+
+constexpr size_t SIZE_T_MAX = size_t(-1);
 
 std::span<const char* const> token_type_span();
 std::string token_type_to_string(token_type index);
@@ -35,3 +38,5 @@ std::string call_inspect(const UP<object>& obj);
 std::string call_inspect(const UP<evaluated>& obj);
 const UP<object>& index_avec(const avec<UP<object>>& vec, size_t index);
 size_t avec_size(const avec<UP<object>>& vec);
+
+}

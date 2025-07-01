@@ -1,26 +1,32 @@
+module; 
 
 #include "pch.h"
 
-#include "evaluator.h"
-
 #include "allocator_aliases.h"
-#include "node.h"
 #include "structs_and_macros.h"
-#include "helpers.h"
-#include "object.h"
-#include "environment.h"
 
+#include <array>
+
+import object;
+import helpers;
+import node;
+import environment;
 
 extern std::vector<std::string> errors;
 extern display_table display_tab;
-
-static avec<UP<node>> nodes;
-static avec<UP<e_node>> e_nodes;
 
 extern std::vector<std::string> warnings;
 
 extern avec<SP<table_object>> g_tables;
 extern std::vector<SP<evaluated_function_object>> g_functions;
+
+module evaluator;
+
+
+
+static avec<UP<node>> nodes;
+static avec<UP<e_node>> e_nodes;
+
 
 static void eval_function(UP<function> func, SP<environment> env);
 static UP<evaluated> eval_run_function(UP<function_call_object> func_call, SP<environment> env);
@@ -1101,9 +1107,9 @@ static std::expected<UP<e_select_from_object>, UP<error_object>> eval_select_fro
 static std::pair<const SP<table_object>&, bool> get_table_as_const(const std_and_astring_variant& name) {
 
     std::string name_unwrapped;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         name_unwrapped = unwrapped;
-    );
+    });
 
     for (const auto& entry : g_tables) {
         if (entry->table_name == name_unwrapped) {

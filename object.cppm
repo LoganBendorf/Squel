@@ -1,4 +1,4 @@
-#pragma once
+module;
 
 // objects are made in the parser, used to parse and return values from expressions
     // i.e (10 + 10) will return an integer_object with the value 20
@@ -6,13 +6,15 @@
 #include "token.h"
 #include "allocators.h"
 #include "allocator_aliases.h"
-#include "structs_and_macros.h" // For table
 
+#include <cstddef> 
+#include <array>  
 #include <expected>
-#include <charconv>
+#include <charconv> 
 
+export module object;
 
-
+export {
 
 enum object_type : std::uint8_t {
     ERROR_OBJ, NULL_OBJ, INFIX_EXPRESSION_OBJ, PREFIX_EXPRESSION_OBJ, INTEGER_OBJ, INDEX_OBJ, DECIMAL_OBJ, STRING_OBJ, SQL_DATA_TYPE_OBJ,
@@ -113,15 +115,10 @@ astring numeric_to_astring(T value) {
 
 
 // For std_and_astring_variant
-#define VISIT(to_unwrap, var_name, ...)                \
-    do {                                               \
-        std::visit(                                   \
-            [&](const auto& var_name) {                \
-                __VA_ARGS__;                           \
-            },                                         \
-            to_unwrap.get_variant()                    \
-        );                                             \
-    } while (0)
+template<typename Visitor>
+auto visit(const std_and_astring_variant& to_unwrap, Visitor&& visitor) {
+    return std::visit(std::forward<Visitor>(visitor), to_unwrap.get_variant());
+}
 
 
 
@@ -1100,3 +1097,5 @@ class assert_object : public object {
     size_t line;
     UP<object> expression;
 };
+
+}

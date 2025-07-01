@@ -1,23 +1,31 @@
-#include "helpers.h"
-#include "pch.h"
+module;
 
-#include "execute.h"
+#include "pch.h"
 
 #include "structs_and_macros.h"
 #include "allocator_aliases.h"
-#include "object.h"
-#include "node.h"
-#include "environment.h"
+#include "token.h"
+
+#include <array> 
+
+import object;
+import helpers;
+import node;
+import environment;
 
 extern std::vector<std::string> errors;
 extern display_table display_tab;
-
-static avec<UP<e_node>> nodes;
 
 extern std::vector<std::string> warnings;
 
 extern avec<SP<table_object>> g_tables;
 extern avec<SP<evaluated_function_object>> g_functions;
+
+module execute;
+
+
+static avec<UP<e_node>> nodes;
+
 
 #define exec_push_err_ret(x)                    \
     std::stringstream err;                      \
@@ -737,9 +745,9 @@ static std::expected<UP<evaluated>, UP<error_object>> get_insertable(UP<evaluate
 static std::pair<SP<table_object>, bool> get_table(const std_and_astring_variant& name) {
 
     astring name_unwrapped;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         name_unwrapped = unwrapped;
-    );
+    });
 
     for (const auto& entry : g_tables) {
         if (entry->table_name == name_unwrapped) {
@@ -753,9 +761,9 @@ static std::pair<SP<table_object>, bool> get_table(const std_and_astring_variant
 static std::pair<const SP<table_object>&, bool> get_table_as_const(const std_and_astring_variant& name) {
 
     astring name_unwrapped;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         name_unwrapped = unwrapped;
-    );
+    });
 
     for (const auto& entry : g_tables) {
         if (entry->table_name == name_unwrapped) {

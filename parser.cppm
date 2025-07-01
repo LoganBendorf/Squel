@@ -1,13 +1,18 @@
-#pragma once
+module;
 
 #include "allocator_aliases.h"
-#include "node.h"
 
 #include <vector>
 
-class node;
+import node;
 struct token;
+
+export module parser;
+
+
+export {
 
 void parser_init(std::vector<token> toks);
 avec<UP<node>> parse();
 
+}

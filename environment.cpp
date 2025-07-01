@@ -1,10 +1,13 @@
+module;
 
 #include "pch.h"
 
-#include "environment.h"
+#include "allocators.h"
+#include "allocator_aliases.h"
 
-#include "object.h"
+import object;
 
+module environment;
 
 
 main_alloc<environment> environment::environment_allocator_alias;
@@ -60,9 +63,9 @@ void environment::add_or_replace_function(SP<evaluated_function_object> new_func
 bool environment::is_function(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         unwrapped_name = unwrapped;
-    );
+    });
 
     for (const auto& func : functions) {
         if (func->name == unwrapped_name) {
@@ -79,9 +82,9 @@ bool environment::is_function(const std_and_astring_variant& name) const {
 std::pair<SP<evaluated_function_object>, bool> environment::get_function(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         unwrapped_name = unwrapped;
-    );
+    });
 
     for (const auto& func : functions) {
         if (func->name == unwrapped_name) {
@@ -139,9 +142,9 @@ bool environment::is_variable(const astring& name) const {
 std::expected<UP<e_variable_object>, UP<error_object>> environment::get_variable(const std_and_astring_variant& name) const {
 
     astring unwrapped_name;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         unwrapped_name = unwrapped;
-    );
+    });
 
     for (const auto& var : variables) {
         if (var->name == unwrapped_name) {

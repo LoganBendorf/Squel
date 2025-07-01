@@ -1,17 +1,24 @@
+module;
+
 #include "pch.h"
 
-#include "parser.h"
-
-#include "node.h"
-#include "helpers.h"
-#include "object.h"
 #include "token.h"
 #include "structs_and_macros.h"
-#include "environment.h"
 #include "allocator_aliases.h"
+
+import object;
+import node;
+import helpers;
+import environment;
 
 extern std::vector<std::string> errors;
 extern display_table display_tab;
+
+extern avec<SP<table_object>> g_tables;
+extern std::vector<SP<evaluated_function_object>> g_functions;
+
+module parser;
+
 
 static avec<UP<node>> nodes;
 
@@ -20,8 +27,6 @@ static size_t token_position = 0;
 
 static token prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
 
-extern avec<SP<table_object>> g_tables;
-extern std::vector<SP<evaluated_function_object>> g_functions;
 
 
 

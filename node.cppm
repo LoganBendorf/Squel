@@ -1,11 +1,14 @@
-#pragma once
+module;
 
 #include "structs_and_macros.h"
-#include "object.h"
 #include "allocator_aliases.h"
 #include "allocators.h"
 
+import object;
 
+export module node;
+
+export {
 
 enum node_type : std::uint8_t{
     NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE, SELECT_NODE,
@@ -210,3 +213,5 @@ class assert_node : public node {
     public:
     UP<assert_object> value;
 };
+
+}

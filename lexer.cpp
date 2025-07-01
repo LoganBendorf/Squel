@@ -1,13 +1,16 @@
-
+module;
 
 #include "pch.h"
 
 #include "token.h"
-#include "helpers.h"
 
-
+import helpers;
 
 extern std::vector<std::string> errors;
+
+module lexer;
+
+
 
 static std::string input;
 static size_t input_position;

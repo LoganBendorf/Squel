@@ -1,16 +1,19 @@
-
+module;
 // objects are made in the parser and should probably stay there, used to parse and return values from expressions
 // i.e (10 + 10) will return an integer_object with the value 20
 
 #include "pch.h"
 
-#include "object.h"
-
 #include "allocator_aliases.h"
 #include "token.h"
-#include "helpers.h"
 #include "structs_and_macros.h" // For table
 
+#include <array> 
+#include <span>
+
+import helpers;
+
+module object; 
 
 
 
@@ -336,11 +339,10 @@ decimal_object* decimal_object::clone() const {
 
 
 // string_object
-string_object::string_object(const std_and_astring_variant& val)  {
-
-    VISIT(val, unwrapped,
+string_object::string_object(const std_and_astring_variant& val) {
+    visit(val, [&](const auto& unwrapped) {
         value = unwrapped;
-    );
+    });
 }
 astring string_object::inspect() const {
     return value;
@@ -377,17 +379,17 @@ return_value_object* return_value_object::clone() const {
 
 // argument_object
 argument_object::argument_object(const std_and_astring_variant& set_name, object* val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     value = UP<object>(val);
 }
 argument_object::argument_object(const std_and_astring_variant& set_name, UP<object> val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
-    
+    });
+
     value = std::move(val);
 }
 astring argument_object::inspect() const {
@@ -405,16 +407,16 @@ argument_object* argument_object::clone() const {
 
 // e_argument_object
 e_argument_object::e_argument_object(const std_and_astring_variant& set_name, evaluated* val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     value = UP<evaluated>(val);
 }
 e_argument_object::e_argument_object(const std_and_astring_variant& set_name, UP<evaluated> val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     value = std::move(val);
 }
@@ -433,16 +435,16 @@ e_argument_object* e_argument_object::clone() const {
 
 // variable_object
 variable_object::variable_object(const std_and_astring_variant& set_name, object* val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     value = UP<object>(val);
 }
 variable_object::variable_object(const std_and_astring_variant& set_name, UP<object> val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     value = std::move(val);
 }
@@ -461,16 +463,16 @@ variable_object* variable_object::clone() const {
 
 // e_variable_object
 e_variable_object::e_variable_object(const std_and_astring_variant& set_name, evaluated* val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     value = UP<evaluated>(val);
 }
 e_variable_object::e_variable_object(const std_and_astring_variant& set_name, UP<evaluated> val) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     value = std::move(val);
 }
@@ -598,16 +600,16 @@ e_SQL_data_type_object* e_SQL_data_type_object::clone() const {
 
 // parameter_object
 parameter_object::parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     data_type = UP<SQL_data_type_object>(set_data_type);
 }
 parameter_object::parameter_object(const std_and_astring_variant& set_name, UP<SQL_data_type_object> set_data_type) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     data_type = std::move(set_data_type);
 }
@@ -626,16 +628,16 @@ parameter_object* parameter_object::clone() const {
 
 // e_parameter_object
 e_parameter_object::e_parameter_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* set_data_type) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     data_type = UP<e_SQL_data_type_object>(set_data_type);
 }
 e_parameter_object::e_parameter_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> set_data_type) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     data_type = std::move(set_data_type);
 }
@@ -654,17 +656,17 @@ e_parameter_object* e_parameter_object::clone() const {
 
 // table_detail_object
 table_detail_object::table_detail_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type, object* set_default_value) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     data_type     = UP<SQL_data_type_object>(set_data_type);
     default_value = UP<object>(set_default_value);
 }
 table_detail_object::table_detail_object(const std_and_astring_variant& set_name, UP<SQL_data_type_object> set_data_type, UP<object> set_default_value) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     data_type     = std::move(set_data_type);
     default_value = std::move(set_default_value);
@@ -690,17 +692,17 @@ table_detail_object* table_detail_object::clone() const {
 
 // e_table_detail_object
 e_table_detail_object::e_table_detail_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* set_data_type, evaluated* set_default_value) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     data_type     = UP<e_SQL_data_type_object>(set_data_type);
     default_value = UP<evaluated>(set_default_value);
 }
 e_table_detail_object::e_table_detail_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> set_data_type, UP<evaluated> set_default_value) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     data_type     = std::move(set_data_type);
     default_value = std::move(set_default_value);
@@ -798,18 +800,18 @@ e_group_object* e_group_object::clone() const {
 
 // function_object
 function_object::function_object(const std_and_astring_variant& set_name, group_object* set_parameters, SQL_data_type_object* set_return_type, block_statement* set_body) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     parameters  = UP<group_object>(set_parameters);
     body        = UP<block_statement>(set_body);
     return_type = UP<SQL_data_type_object>(set_return_type);
 }
 function_object::function_object(const std_and_astring_variant& set_name, UP<group_object> set_parameters, UP<SQL_data_type_object> set_return_type, UP<block_statement> set_body) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     parameters  = std::move(set_parameters);
     body        = std::move(set_body);
@@ -842,9 +844,9 @@ evaluated_function_object::evaluated_function_object(const std_and_astring_varia
                                                      e_SQL_data_type_object* set_return_type, e_block_statement* set_body)
     : parameters(std::move(set_parameters))
 {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     return_type = UP<e_SQL_data_type_object>(set_return_type);
     body        = UP<e_block_statement>(set_body);
@@ -853,9 +855,9 @@ evaluated_function_object::evaluated_function_object(const std_and_astring_varia
                                                      UP<e_SQL_data_type_object> set_return_type, UP<e_block_statement> set_body) 
     : parameters(std::move(set_parameters)), return_type(std::move(set_return_type)), body(std::move(set_body))
 {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 }
 astring evaluated_function_object::inspect() const {
     astringstream stream;
@@ -894,16 +896,16 @@ evaluated_function_object* evaluated_function_object::clone() const {
 
 // function_call_object
 function_call_object::function_call_object(const std_and_astring_variant& set_name, group_object* args) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     arguments = UP<group_object>(args);
 }
 function_call_object::function_call_object(const std_and_astring_variant& set_name, UP<group_object> args) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     arguments = std::move(args);
 }
@@ -926,16 +928,16 @@ function_call_object* function_call_object::clone() const {
 
 // e_function_call_object
 e_function_call_object::e_function_call_object(const std_and_astring_variant& set_name, e_group_object* args) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     arguments = UP<e_group_object>(args);
 }
 e_function_call_object::e_function_call_object(const std_and_astring_variant& set_name, UP<e_group_object> args) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
 
     arguments = std::move(args);
 }
@@ -1024,17 +1026,17 @@ column_values_object* column_values_object::clone() const {
 
 // evaluated_column_object
 evaluated_column_object::evaluated_column_object(const std_and_astring_variant& set_name, e_SQL_data_type_object* type, evaluated* set_default_value) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     default_value = UP<evaluated>(set_default_value);
     data_type = UP<e_SQL_data_type_object>(type);
 }
 evaluated_column_object::evaluated_column_object(const std_and_astring_variant& set_name, UP<e_SQL_data_type_object> type, UP<evaluated> set_default_value) {
-    VISIT(set_name, unwrapped,
+    visit(set_name, [&](const auto& unwrapped) {
         name = unwrapped;
-    );
+    });
     
     default_value = std::move(set_default_value);
     data_type = std::move(type);
@@ -1061,9 +1063,9 @@ error_object::error_object() {
     value = astring();
 }
 error_object::error_object(const std_and_astring_variant& val) {
-    VISIT(val, unwrapped,
+    visit(val, [&](const auto& unwrapped) {
         value = unwrapped;
-    );
+    });
 }
 astring error_object::inspect() const {
     return "ERROR: " + value;
@@ -1154,32 +1156,31 @@ e_column_index_object* e_column_index_object::clone() const {
 
 // Table object, only use heap
 table_object::table_object(const std_and_astring_variant& set_table_name, e_table_detail_object* set_column_datas, e_group_object* set_rows) {
-    VISIT(set_table_name, unwrapped,
+    visit(set_table_name, [&](const auto& unwrapped) {
         table_name = unwrapped;
-    );
+    });
 
     column_datas.push_back(UP<e_table_detail_object>(set_column_datas)); 
     rows.push_back(UP<e_group_object>(set_rows)); 
 }
 table_object::table_object(const std_and_astring_variant& set_table_name, UP<e_table_detail_object> set_column_datas, UP<e_group_object> set_rows) {
-    VISIT(set_table_name, unwrapped,
+    visit(set_table_name, [&](const auto& unwrapped) {
         table_name = unwrapped;
-    );
+    });
 
     column_datas.push_back(std::move(set_column_datas)); 
     rows.push_back(std::move(set_rows)); 
 }
 table_object::table_object(const std_and_astring_variant& set_table_name, avec<UP<e_table_detail_object>>&& set_column_datas) : 
     column_datas(std::move(set_column_datas)) {
-    VISIT(set_table_name, unwrapped,
+    visit(set_table_name, [&](const auto& unwrapped) {
         table_name = unwrapped;
-    );
+    });
 }
 table_object::table_object(const std_and_astring_variant& set_table_name, avec<UP<e_table_detail_object>>&& set_column_datas, avec<UP<e_group_object>>&& set_rows) {
-    
-    VISIT(set_table_name, unwrapped,
+    visit(set_table_name, [&](const auto& unwrapped) {
         table_name = unwrapped;
-    );
+    });
 
     column_datas = std::move(set_column_datas);
     rows = std::move(set_rows);
@@ -1248,11 +1249,11 @@ std::pair<const avec<evaluated*>&, bool> table_object::get_const_column(size_t i
 std::pair<const avec<evaluated*>&, bool> table_object::get_const_column(const std_and_astring_variant& col_name) const {
     size_t index = 0;
     bool ok = false;
-    VISIT(col_name, unwrapped,
+    visit(col_name, [&](const auto& unwrapped) {
         const auto& [i, o] = get_column_index(unwrapped);
         index = i;
         ok = o;
-    );
+    });
     
     if (!ok) {
         avec<evaluated*> fail;
@@ -1274,13 +1275,13 @@ std::pair<UP<e_SQL_data_type_object>, bool> table_object::get_column_data_type(s
     return {UP<e_SQL_data_type_object>(dt), true};
 }
 std::pair<size_t, bool> table_object::get_column_index(const std_and_astring_variant& name) const {
-    astring unwraped_name;
-    VISIT(name, unwrapped,
-        unwraped_name = unwrapped;
-    );
+    astring unwrapped_name;
+    visit(name, [&](const auto& unwrapped) {
+        unwrapped_name = unwrapped;
+    });
 
     for (size_t i = 0; i < column_datas.size(); i++) {
-        if (column_datas[i]->name == unwraped_name) {
+        if (column_datas[i]->name == unwrapped_name) {
             return {i, true};
         }
     }
@@ -1318,9 +1319,10 @@ avec<size_t> table_object::get_row_ids() const {
 }
 bool table_object::check_if_field_name_exists(const std_and_astring_variant& name) const {
     astring unwrapped_name;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         unwrapped_name = unwrapped;
-    );
+    });
+
     for (const auto& col_data : column_datas) {
         if (col_data->name == unwrapped_name) {
             return true; }
@@ -1367,9 +1369,9 @@ table_aggregate_object* table_aggregate_object::clone() const {
 std::expected<size_t, UP<error_object>> table_aggregate_object::get_col_id(const std_and_astring_variant& column_name) const {
 
     astring unwrapped_col_name;
-    VISIT(column_name, unwrapped,
+    visit(column_name, [&](const auto& unwrapped) {
         unwrapped_col_name = unwrapped;
-    );
+    });
 
     bool found_col = false;
     size_t id = 0;
@@ -1392,9 +1394,9 @@ std::expected<size_t, UP<error_object>> table_aggregate_object::get_col_id(const
 std::expected<size_t, UP<error_object>> table_aggregate_object::get_col_id(const std_and_astring_variant& table_name, size_t index) const {
 
     astring unwrapped_table_name;
-    VISIT(table_name, unwrapped,
+    visit(table_name, [&](const auto& unwrapped) {
         unwrapped_table_name = unwrapped;
-    );  
+    });
 
     bool found_table = false;
     size_t id = 0;
@@ -1421,14 +1423,14 @@ std::expected<size_t, UP<error_object>> table_aggregate_object::get_col_id(const
 std::expected<size_t, UP<error_object>> table_aggregate_object::get_col_id(const std_and_astring_variant& table_name, const std_and_astring_variant& column_name) const {
 
     astring unwrapped_table_name;
-    VISIT(table_name, unwrapped,
+    visit(table_name, [&](const auto& unwrapped) {
         unwrapped_table_name = unwrapped;
-    );
+    });
     
     astring unwrapped_col_name;
-    VISIT(column_name, unwrapped,
+    visit(column_name, [&](const auto& unwrapped) {
         unwrapped_col_name = unwrapped;
-    );
+    });
 
     bool found_table = false;
     bool found_col = false;
@@ -1536,9 +1538,9 @@ Therefore no copies (or null objects I think) needed.
 SP<table_object> table_aggregate_object::combine_tables(const std_and_astring_variant& name) const {
 
     astring final_name;
-    VISIT(name, unwrapped,
+    visit(name, [&](const auto& unwrapped) {
         final_name = unwrapped;
-    );
+    });
 
     size_t total_columns = 0;
     size_t max_rows = 0;
@@ -1601,17 +1603,17 @@ void table_aggregate_object::add_table(const SP<table_object>& table) {
 // Insert into object
 insert_into_object::insert_into_object(const std_and_astring_variant& set_table_name, avec<UP<object>>&& set_fields, object* set_values) : 
     fields(std::move(set_fields)) {
-    VISIT(set_table_name, unwrapped,
+    visit(set_table_name, [&](const auto& unwrapped) {
         table_name = unwrapped;
-    );
-    values     = UP<object>(set_values);
+    });
+    values = UP<object>(set_values);
 }
 insert_into_object::insert_into_object(const std_and_astring_variant& set_table_name, avec<UP<object>>&& set_fields, UP<object> set_values) : 
     fields(std::move(set_fields)), 
     values(std::move(set_values)) {
-    VISIT(set_table_name, unwrapped,
+    visit(set_table_name, [&](const auto& unwrapped) {
         table_name = unwrapped;
-    );
+    });
 }
 astring insert_into_object::inspect() const {
     astringstream stream;

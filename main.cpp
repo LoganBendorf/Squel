@@ -1,20 +1,21 @@
-
 #include "pch.h"
 
 #include "allocators.h"
 #include "allocator_aliases.h"
 #include "structs_and_macros.h"
 #include "test_reader.h"
-#include "lexer.h"
-#include "parser.h"
-#include "evaluator.h"
-#include "print.h"
-#include "object.h"
-#include "node.h"
-#include "execute.h"
+#include "token.h"
 
-import test;
-int main() { hello(); }
+import object;
+import helpers;
+import node;
+import evaluator;
+import execute;
+import lexer;
+import parser;
+import print;
+
+
 
 std::vector<std::string> errors;
 std::vector<std::string> warnings;

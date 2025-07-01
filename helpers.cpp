@@ -1,10 +1,16 @@
-
+module;
 
 #include "pch.h"
 
-#include "helpers.h"
+#include "token.h"
+#include "allocator_aliases.h"
 
-#include "object.h"
+#include <array>
+#include <span>
+
+import object;
+
+module helpers;
 
 
 std::span<const char* const> token_type_span() {

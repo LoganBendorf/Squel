@@ -1,14 +1,16 @@
-#pragma once
+module;
 
 #include "allocators.h"
 #include "allocator_aliases.h"
 #include "structs_and_macros.h"
 
-class object;
-class e_argument_object;
-class e_variable_object;
-class evaluated_function_object;
-class error_object;
+#include <expected>
+
+import object;
+
+export module environment;
+
+export {
 
 class environment {
 
@@ -67,3 +69,5 @@ class environment {
     avec<UP<e_variable_object>> variables;
 
 };
+
+}

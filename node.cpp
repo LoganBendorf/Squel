@@ -1,9 +1,14 @@
+module;
 
 #include "pch.h"
 
-#include "node.h"
-#include "helpers.h"
-#include "object.h"
+#include "allocators.h"
+#include "allocator_aliases.h"
+
+import object;
+import helpers;
+
+module node; 
 
 main_alloc<node> node::node_allocator_alias;
 
