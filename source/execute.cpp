@@ -90,7 +90,7 @@ void execute() {
             exec_select_from(cast_UP<e_select_from>(node), env);
         } break;
         case E_CREATE_TABLE_NODE:
-            std::cout << "EXECUTE CREATE TABLE CALLED\n";
+            // std::cout << "EXECUTE CREATE TABLE CALLED\n";
             exec_create_table(cast_UP<e_create_table>(node));
             break;
         // case E_ALTER_TABLE_NODE:

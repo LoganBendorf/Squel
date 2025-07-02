@@ -597,6 +597,14 @@ astring e_SQL_data_type_object::data() const {
 e_SQL_data_type_object* e_SQL_data_type_object::clone() const {
     return new e_SQL_data_type_object(prefix, data_type, parameter->clone());
 }
+astring e_SQL_data_type_object::serialize() const {
+    astringstream stream;
+    if (prefix != NONE) {
+        stream << token_type_to_string(prefix) << " "; }
+    stream << token_type_to_string(data_type) << ", ";
+    stream << parameter->inspect(); //!!MAJOR LAZY RN
+    return stream.str();
+}
 
 // parameter_object
 parameter_object::parameter_object(const std_and_astring_variant& set_name, SQL_data_type_object* set_data_type) {
@@ -724,6 +732,13 @@ astring e_table_detail_object::data() const {
 }
 e_table_detail_object* e_table_detail_object::clone() const {
     return new e_table_detail_object(name, data_type->clone(), default_value->clone());
+}
+astring e_table_detail_object::serialize() const {
+    astringstream stream;
+    stream << name << ", ";
+    stream << data_type->serialize() << ", ";
+    stream << default_value->inspect(); // !!MAJOR LAZY RN
+    return stream.str();
 }
 
 // group_object

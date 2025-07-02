@@ -148,7 +148,7 @@ avec<UP<e_node>> eval() {
 
         } break;
         case CREATE_TABLE_NODE:
-            std::cout << "EVAL CREATE TABLE CALLED\n";
+            // std::cout << "EVAL CREATE TABLE CALLED\n";
             eval_create_table(cast_UP<create_table>(node), env);
             break;
         case ALTER_TABLE_NODE:

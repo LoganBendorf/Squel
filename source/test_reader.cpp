@@ -2,6 +2,8 @@
 
 #include "pch.h"
 
+#include "test_reader.h"
+
 #include "structs_and_macros.h"
 
 #include <filesystem>
@@ -11,16 +13,21 @@
 
 extern std::vector<std::string> errors;
 
+#define PROJECT_DIR std::filesystem::path(__FILE__).parent_path().parent_path()
+#define TEST_PATH_STR (PROJECT_DIR / "tests/SQL_tests").string()
+// static constexpr auto TEST_PATH_STR  = "tests/SQL_tests";
+
 std::vector<struct test_container> init_read_test() {
-    const std::string path = "tests";
+
+    const std::filesystem::path test_dir = TEST_PATH_STR;
     std::vector<struct test_container> tests;
 
-    for (const auto & entry: std::filesystem::directory_iterator(path)) {
+    for (const auto & entry: std::filesystem::directory_iterator(test_dir)) {
         if (entry.is_directory()) {
             struct test_container test;
-            test.folder_name = entry.path().lexically_relative("tests");
+            test.folder_name = entry.path().lexically_relative(test_dir);
             for (const auto & sub_folder_entry: std::filesystem::directory_iterator(entry.path())){
-                test.test_paths.push_back(sub_folder_entry.path().lexically_relative("tests"));
+                test.test_paths.push_back(sub_folder_entry.path().lexically_relative(test_dir));
                 test.max_tests++;
             }
             tests.push_back(test);
@@ -56,13 +63,14 @@ struct test read_test(struct test_container test, size_t index) {
         return {.text="NO MORE TESTS!!!!", .except_fail=false};
     }
 
-    std::ifstream file;
-    file.open("tests/" + test.test_paths[index]);
+    std::ifstream file;    
+    file.open(TEST_PATH_STR + "/" + test.test_paths[index]);
 
     if (!file.is_open()) {
-        errors.push_back("Could not open file: " + test.test_paths[index]);
+        std::cout << "Could not open file: " << TEST_PATH_STR << "/" << test.test_paths[index] 
+                << " - Error: " << strerror(errno) << " (errno: " << errno << ")" << std::endl;
         exit(1);
-    }
+    }   
 
     std::string file_contents((std::istreambuf_iterator<char>(file)),
                              std::istreambuf_iterator<char>()); // Read entire file content
@@ -85,5 +93,4 @@ struct test read_test(struct test_container test, size_t index) {
     }
 
     return {file_contents, expect_fail};
-
 }

@@ -502,6 +502,7 @@ class e_SQL_data_type_object : virtual public evaluated {
     [[nodiscard]] object_type type() const override;
     [[nodiscard]] astring data() const override;
     [[nodiscard]] e_SQL_data_type_object* clone() const override;
+    [[nodiscard]] astring serialize() const /*override*/;
 
     token_type prefix;
     token_type data_type;
@@ -571,6 +572,7 @@ class e_table_detail_object : virtual public evaluated {
     [[nodiscard]] object_type type() const override;
     [[nodiscard]] astring data() const override;
     [[nodiscard]] e_table_detail_object* clone() const override;
+    [[nodiscard]] astring serialize() const /*override*/;
 
     public:
     astring name;

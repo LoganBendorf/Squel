@@ -1,0 +1,3 @@
+table_name
+	(column_name, INTEGER, 11, NULL_OBJECT)
+	420

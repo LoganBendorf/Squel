@@ -16,7 +16,8 @@
 #include <memory> 
 #include <charconv>
 #include <source_location>
-
+#include <cerrno>
+#include <cstring>
 
 #include <qt5/QtWidgets/qapplication.h>
 //#include <QApplication>

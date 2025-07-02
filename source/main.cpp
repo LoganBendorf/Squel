@@ -5,6 +5,8 @@
 #include "structs_and_macros.h"
 #include "test_reader.h"
 #include "token.h"
+#include <QLoggingCategory>
+
 
 import object;
 import helpers;
@@ -66,6 +68,9 @@ enum input_style : std::uint8_t {
 constexpr enum input_style input_style = TEST;
 
 int main (int argc, char* argv[]) {
+
+    // At the start of your main() function:
+    QLoggingCategory::setFilterRules("qt.qpa.events.reader.debug=false");
 
     display_tab.to_display = false;
 
@@ -250,7 +255,7 @@ int main (int argc, char* argv[]) {
 
                     parser_init(tokens);
                     avec<UP<node>> nodes = parse();
-                    print_nodes(nodes);
+                    // print_nodes(nodes);
 
                     eval_init(std::move(nodes));
                     nodes.clear();
@@ -260,7 +265,7 @@ int main (int argc, char* argv[]) {
                     execute();
                     e_nodes.clear();
                     
-                    print_global_tables(g_tables);
+                    // print_global_tables(g_tables);
 
 
                     auto end = std::chrono::high_resolution_clock::now();

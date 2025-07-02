@@ -49,32 +49,44 @@ set(COMPILE_FLAGS
 )
 
 # Files
-add_executable(squel main.cpp)
+
+
+set(SOURCE_DIR "${PROJECT_SOURCE_DIR}/source")
+
+set(MODULE_IMPLEMENTATIONS
+    ${SOURCE_DIR}/object.cpp
+    ${SOURCE_DIR}/helpers.cpp
+    ${SOURCE_DIR}/node.cpp
+    ${SOURCE_DIR}/environment.cpp
+    ${SOURCE_DIR}/evaluator.cpp
+    ${SOURCE_DIR}/parser.cpp
+    ${SOURCE_DIR}/print.cpp
+    ${SOURCE_DIR}/lexer.cpp
+    ${SOURCE_DIR}/execute.cpp
+)
+
+set(MODULE_INTERFACES
+    ${SOURCE_DIR}/object.cppm
+    ${SOURCE_DIR}/helpers.cppm
+    ${SOURCE_DIR}/node.cppm
+    ${SOURCE_DIR}/environment.cppm
+    ${SOURCE_DIR}/evaluator.cppm
+    ${SOURCE_DIR}/parser.cppm
+    ${SOURCE_DIR}/print.cppm
+    ${SOURCE_DIR}/lexer.cppm
+    ${SOURCE_DIR}/execute.cppm
+)
+
+add_executable(squel ${SOURCE_DIR}/main.cpp)
 target_sources(squel PUBLIC
-        ${PROJECT_SOURCE_DIR}/main.cpp
-        ${PROJECT_SOURCE_DIR}/test_reader.cpp
+        ${SOURCE_DIR}/main.cpp
+        ${SOURCE_DIR}/test_reader.cpp
         # Module implementations
-            ${PROJECT_SOURCE_DIR}/object.cpp
-            ${PROJECT_SOURCE_DIR}/helpers.cpp
-            ${PROJECT_SOURCE_DIR}/node.cpp
-            ${PROJECT_SOURCE_DIR}/environment.cpp
-            ${PROJECT_SOURCE_DIR}/evaluator.cpp
-            ${PROJECT_SOURCE_DIR}/parser.cpp
-            ${PROJECT_SOURCE_DIR}/print.cpp
-            ${PROJECT_SOURCE_DIR}/lexer.cpp
-            ${PROJECT_SOURCE_DIR}/execute.cpp
+            ${MODULE_IMPLEMENTATIONS}
     PUBLIC
     FILE_SET CXX_MODULES
     FILES
-        ${PROJECT_SOURCE_DIR}/object.cppm
-        ${PROJECT_SOURCE_DIR}/helpers.cppm
-        ${PROJECT_SOURCE_DIR}/node.cppm
-        ${PROJECT_SOURCE_DIR}/environment.cppm
-        ${PROJECT_SOURCE_DIR}/evaluator.cppm
-        ${PROJECT_SOURCE_DIR}/parser.cppm
-        ${PROJECT_SOURCE_DIR}/print.cppm
-        ${PROJECT_SOURCE_DIR}/lexer.cppm
-        ${PROJECT_SOURCE_DIR}/execute.cppm
+        ${MODULE_INTERFACES}
 )
 
 target_compile_options(squel PUBLIC
@@ -85,11 +97,39 @@ target_compile_options(squel PUBLIC
 target_link_options(squel PUBLIC ${SANITIZER_FLAGS})
 
 target_include_directories(squel PUBLIC 
-    ${CMAKE_SOURCE_DIR}/Allocators
+    ${SOURCE_DIR}/Allocators
 )
 
 find_package(Qt5 REQUIRED COMPONENTS Core Widgets)
 target_link_libraries(squel 
     Qt5::Core Qt5::Widgets
 )
-target_precompile_headers(squel PUBLIC pch.h)
+target_precompile_headers(squel PUBLIC ${SOURCE_DIR}/pch.h)
+
+
+
+# Tests
+
+set(SAVE_TEST_DIR "${PROJECT_SOURCE_DIR}/tests/save_test")
+add_executable(save_test ${SAVE_TEST_DIR}/main.cpp)
+target_sources(save_test PUBLIC
+    ${SAVE_TEST_DIR}/main.cpp
+    ${SOURCE_DIR}/test_reader.cpp
+    # Module implementations
+    ${MODULE_IMPLEMENTATIONS}
+    PUBLIC
+    FILE_SET CXX_MODULES
+    FILES
+    ${MODULE_INTERFACES}
+)
+target_compile_options(save_test PUBLIC ${COMPILE_FLAGS})
+target_link_options(save_test PUBLIC ${SANITIZER_FLAGS})
+target_include_directories(save_test PUBLIC 
+    ${SOURCE_DIR}
+    ${SOURCE_DIR}/Allocators
+)
+target_link_libraries(save_test Qt5::Core Qt5::Widgets)
+target_precompile_headers(save_test PUBLIC ${SOURCE_DIR}/pch.h)
+set_target_properties(save_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY tests
+)
