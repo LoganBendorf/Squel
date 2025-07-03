@@ -1,1 +1,1 @@
-Run "cmake -B build -G Ninja -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON" then "cmake --build build -j8"
+Run "cmake -B build -G Ninja -S ." then "cmake --build build -j8"

@@ -1,14 +1,14 @@
-#include "../pch.h"
 
 #include "allocators.h"
 #include "allocator_aliases.h"
-#include "structs_and_macros.h"
-#include "token.h"
 
 #include <fstream>  // std::ofstream
 #include <iostream>
 
+
 import object;
+import structs;
+import token;
 
 extern main_alloc<bool> arena_inst;
 
@@ -22,7 +22,7 @@ std::string input = "";
 
 display_table display_tab = {false, nullptr};
 
-std::vector<struct test_container> tests;
+std::vector<test_container> tests;
 
 
 bool save_tables();

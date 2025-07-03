@@ -2,11 +2,6 @@
 
 #include "allocators.h"
 #include "allocator_aliases.h"
-#include "structs_and_macros.h"
-#include "test_reader.h"
-#include "token.h"
-#include <QLoggingCategory>
-
 
 import object;
 import helpers;
@@ -16,6 +11,9 @@ import execute;
 import lexer;
 import parser;
 import print;
+import structs;
+import test_reader;
+import token;
 
 
 
@@ -29,7 +27,7 @@ std::string input;
 
 display_table display_tab = {false, nullptr};
 
-static std::vector<struct test_container> tests;
+static std::vector<test_container> tests;
 
 // CURRENTLY WORKING ON:
 // CREATE TABLE

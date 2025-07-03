@@ -1,11 +1,11 @@
 module;
 
-#include "token.h"
-
 #include <vector>
 #include <string>
 
 export module lexer;
+
+import token;
 
 export {
 

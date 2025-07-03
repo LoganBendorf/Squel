@@ -2,9 +2,9 @@ module;
 
 #include "allocator_aliases.h"
 
-import node;
-
 export module execute;
+
+import node;
 
 export {
 

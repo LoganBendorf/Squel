@@ -1,12 +1,16 @@
 
-#pragma once
+module;
 
 #include "allocator_aliases.h"
 
 #include <vector>
 #include <string>
 
+export module structs;
+
 import object;
+
+export {
 
 using display_table = struct display_table {
     bool to_display;
@@ -25,5 +29,8 @@ struct test {
     bool except_fail;
 };
 
+}
 
-#define SIZE_T_MIN_FUNC(a, b) (a) < (b) ? (a) : (b)
+
+
+// #define SIZE_T_MIN_FUNC(a, b) (a) < (b) ? (a) : (b)

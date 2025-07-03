@@ -1,14 +1,14 @@
 module;
 
 #include "allocator_aliases.h"
-#include "token.h"
 
 #include <vector>
 
+export module print;
+
 import object;
 import node;
-
-export module print;
+import token;
 
 export {
 

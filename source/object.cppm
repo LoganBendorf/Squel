@@ -3,16 +3,17 @@ module;
 // objects are made in the parser, used to parse and return values from expressions
     // i.e (10 + 10) will return an integer_object with the value 20
 
-#include "token.h"
 #include "allocators.h"
 #include "allocator_aliases.h"
 
+#include <expected>
 #include <cstddef> 
 #include <array>  
-#include <expected>
 #include <charconv> 
 
 export module object;
+
+import token;
 
 export {
 

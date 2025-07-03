@@ -1,30 +1,29 @@
-
-
-#include "pch.h"
-
-#include "test_reader.h"
-
-#include "structs_and_macros.h"
+module;
 
 #include <filesystem>
 #include <fstream>
-
-
+#include <iostream>
 
 extern std::vector<std::string> errors;
+
+module test_reader;
+
+import structs;
+
+
 
 #define PROJECT_DIR std::filesystem::path(__FILE__).parent_path().parent_path()
 #define TEST_PATH_STR (PROJECT_DIR / "tests/SQL_tests").string()
 // static constexpr auto TEST_PATH_STR  = "tests/SQL_tests";
 
-std::vector<struct test_container> init_read_test() {
+std::vector<test_container> init_read_test() {
 
     const std::filesystem::path test_dir = TEST_PATH_STR;
-    std::vector<struct test_container> tests;
+    std::vector<test_container> tests;
 
     for (const auto & entry: std::filesystem::directory_iterator(test_dir)) {
         if (entry.is_directory()) {
-            struct test_container test;
+            test_container test;
             test.folder_name = entry.path().lexically_relative(test_dir);
             for (const auto & sub_folder_entry: std::filesystem::directory_iterator(entry.path())){
                 test.test_paths.push_back(sub_folder_entry.path().lexically_relative(test_dir));
@@ -57,7 +56,7 @@ std::vector<struct test_container> init_read_test() {
     return tests;
 }
 
-struct test read_test(struct test_container test, size_t index) {
+test read_test(test_container test, size_t index) {
     
     if (test.current_test_num == test.max_tests) {
         return {.text="NO MORE TESTS!!!!", .except_fail=false};

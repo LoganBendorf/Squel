@@ -2,13 +2,12 @@ module;
 
 #include "allocators.h"
 #include "allocator_aliases.h"
-#include "structs_and_macros.h"
 
 #include <expected>
 
-import object;
-
 export module environment;
+
+import object;
 
 export {
 

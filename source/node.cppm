@@ -1,12 +1,11 @@
 module;
 
-#include "structs_and_macros.h"
 #include "allocator_aliases.h"
 #include "allocators.h"
 
-import object;
-
 export module node;
+
+import object;
 
 export {
 

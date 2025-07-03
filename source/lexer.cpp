@@ -1,14 +1,11 @@
 module;
 
-#include "pch.h"
-
-#include "token.h"
-
-import helpers;
-
 extern std::vector<std::string> errors;
 
 module lexer;
+
+import helpers;
+import token;
 
 
 

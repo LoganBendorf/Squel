@@ -1,22 +1,19 @@
 module;
 
-#include "token.h"
 #include "allocator_aliases.h"
 
 #include <string>
 #include <span>
 #include <cstddef>
 
-import object;
-
 export module helpers;
+
+import object;
+import token;
 
 export {
 
 constexpr size_t SIZE_T_MAX = size_t(-1);
-
-std::span<const char* const> token_type_span();
-std::string token_type_to_string(token_type index);
 
 bool is_integer_data_type(SQL_data_type_object* data_type);
 bool is_string_data_type(SQL_data_type_object* data_type);

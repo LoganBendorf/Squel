@@ -2,18 +2,15 @@ module;
 // objects are made in the parser and should probably stay there, used to parse and return values from expressions
 // i.e (10 + 10) will return an integer_object with the value 20
 
-#include "pch.h"
-
 #include "allocator_aliases.h"
-#include "token.h"
-#include "structs_and_macros.h" // For table
 
+#include <expected>
 #include <array> 
 #include <span>
 
-import helpers;
-
 module object; 
+
+import token;
 
 
 

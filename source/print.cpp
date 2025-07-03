@@ -1,14 +1,15 @@
 module;
 
-#include "pch.h"
+#include "allocator_aliases.h"
 
-#include "structs_and_macros.h"
-#include "token.h"
-
-import helpers;
-import node;
+#include <iostream>
+#include <iomanip>
 
 module print;
+
+import token;
+import object;
+import node;
 
 void print_tokens(const std::vector<token>& tokens) {
     std::cout << "PRINTING TOKENS ----------------\n";

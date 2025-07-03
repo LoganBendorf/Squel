@@ -4,11 +4,10 @@ module;
 
 #include <vector>
 
-import node;
-struct token;
-
 export module parser;
 
+import node;
+import token;
 
 export {
 

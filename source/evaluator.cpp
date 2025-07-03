@@ -1,16 +1,12 @@
 module; 
 
-#include "pch.h"
-
 #include "allocator_aliases.h"
-#include "structs_and_macros.h"
 
+#include <expected>
 #include <array>
 
 import object;
-import helpers;
-import node;
-import environment;
+import structs;
 
 extern std::vector<std::string> errors;
 extern display_table display_tab;
@@ -21,6 +17,10 @@ extern avec<SP<table_object>> g_tables;
 extern std::vector<SP<evaluated_function_object>> g_functions;
 
 module evaluator;
+
+import helpers;
+import node;
+import environment;
 
 
 
