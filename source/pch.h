@@ -1,6 +1,34 @@
 #ifndef PCH_H
 #define PCH_H
 
+#include <string>
+#include <span>
+#include <vector>
+#include <iostream>
+#include <functional>
+#include <algorithm>
+#include <numeric>
+#include <cstdlib>
+#include <iomanip>
+#include <expected>
+#include <cstddef>
+#include <cstring>
+#include <memory> 
+#include <charconv>
+#include <source_location>
+#include <filesystem>
+#include <csignal>
+#include <fstream>
+#include <tuple>
+#include <stdexcept>
+#include <execinfo.h>
+#include <cxxabi.h>
+#include <bit>
+#include <dlfcn.h>
+#include <cxxabi.h>
+#include <iomanip>
+
+
 #include <qt5/QtWidgets/qapplication.h>
 //#include <QApplication>
 //#include <QWidget>
@@ -15,6 +43,5 @@
 #include <qt5/QtWidgets/qlabel.h>
 //#include <QGridLayout>
 #include <qt5/QtWidgets/qgridlayout.h>
-#include <QLoggingCategory>
 
 #endif

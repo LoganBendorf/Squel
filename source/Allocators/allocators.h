@@ -41,10 +41,10 @@ class allocator_base{
     allocator_base() = default;
     
     template<typename U>
-    allocator_base(const allocator_base<U>&) noexcept {}
+    allocator_base(const allocator_base<U>&) noexcept {}  // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     template<typename U>
-    allocator_base(allocator_base<U>&&) noexcept {}
+    allocator_base(allocator_base<U>&&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     virtual ~allocator_base() = default;
 
@@ -81,10 +81,10 @@ class mallocator : public allocator_base<T> {
     mallocator() = default;
     
     template<typename U>
-    mallocator(const mallocator<U>&) noexcept {}
+    mallocator(const mallocator<U>&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     template<typename U>
-    mallocator(mallocator<U>&&) noexcept {}
+    mallocator(mallocator<U>&&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     virtual ~mallocator() = default;
 
@@ -227,10 +227,10 @@ class stack_allocator : public allocator_base<T> {
     stack_allocator() = default;
     
     template<typename U>
-    stack_allocator(const stack_allocator<U>&) noexcept {}
+    stack_allocator(const stack_allocator<U>&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     template<typename U>
-    stack_allocator(stack_allocator<U>&&) noexcept {}
+    stack_allocator(stack_allocator<U>&&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     virtual ~stack_allocator() = default;
 
@@ -450,10 +450,10 @@ class fat_allocator : public allocator_base<T> {
     fat_allocator() = default;
     
     template<typename U>
-    fat_allocator(const fat_allocator<U>&) noexcept {}
+    fat_allocator(const fat_allocator<U>&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     template<typename U>
-    fat_allocator(fat_allocator<U>&&) noexcept {}
+    fat_allocator(fat_allocator<U>&&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     virtual ~fat_allocator() = default;
 
@@ -620,11 +620,11 @@ class main_alloc : public allocator_base<T> {
     main_alloc() = default;
     
     template<typename U>
-    main_alloc(const main_alloc<U>&) noexcept {}
+    main_alloc(const main_alloc<U>&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     
     template<typename U>
-    main_alloc(main_alloc<U>&&) noexcept {}
-    
+    main_alloc(main_alloc<U>&&) noexcept {} // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
+     
     virtual ~main_alloc() = default;
 
 

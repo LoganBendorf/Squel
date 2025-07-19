@@ -1,2 +1,27 @@
 
-# Add serialize() method to objects
+# Parameratized queries
+    https://claude.ai/chat/dc03c85c-758b-41af-bdb5-ed69bb8856f1
+    let output = Command::new(SQUEL_PATH)
+        .args(["-d", "-q", "INSERT INTO emails (username, sender, title, body) VALUES ($1, $2, $3, $4)"])
+        .args(["-p", recipient, username, title, body])  // -p for parameters
+        .output()
+        .map_err(|_| "Query failed to run")?;
+
+
+# Majority of time is spent loading and saving tables
+    Maybe make some kind of background process that caches tables, and is called/signalled by cmd line
+    Try deferring tables saves as well
+
+# Need some kind of framework for large tables
+
+#   table_object {
+#       ...
+#       std:filepath? filename;
+#       avec<UP<s_table_detail_object>> column_data; // Always keep column data in memory cause small
+#       avec<UP<s_table_expr> exprs;                 // Same thing here
+#       // Idk if these should be std::pair in the same vec or seperate
+#       avec<size_t> cached_row_ids;
+#       avec<serializable> cached_rows;
+#   }
+
+# avec<std::pair<SP<table_object>>, astring> cached_queries // Contains table so it can be invalidated if the table is changed

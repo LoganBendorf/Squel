@@ -1,15 +1,10 @@
-module;
 
-#include "allocator_aliases.h"
+#include "pch.h"
 
-#include <iostream>
-#include <iomanip>
+#include "print.h"
 
-module print;
-
-import token;
-import object;
-import node;
+// #include "helpers.h"
+#include "node.h"
 
 void print_tokens(const std::vector<token>& tokens) {
     std::cout << "PRINTING TOKENS ----------------\n";
@@ -28,6 +23,17 @@ void print_nodes(const avec<UP<node>>& nodes) {
     size_t count = 1;
     for (const auto& node : nodes) {
         std::cout << std::to_string(count++) << ":\n" << node->inspect();
+    }
+    std::cout << "DONE ---------------------------\n\n";
+}
+
+void print_e_nodes(const avec<UP<e_node>>& e_nodes) {
+    std::string num_tables = std::to_string(e_nodes.size());
+    size_t dash_length = 14 - num_tables.length();
+    std::cout << "PRINTING E NODES (" << num_tables << ") " << std::string(dash_length, '-') << "\n";
+    size_t count = 1;
+    for (const auto& e_node : e_nodes) {
+        std::cout << std::to_string(count++) << ":\n" << e_node->inspect();
     }
     std::cout << "DONE ---------------------------\n\n";
 }

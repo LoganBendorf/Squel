@@ -1,15 +1,13 @@
-module;
 
-#include <filesystem>
+
+#include "pch.h"
+
+#include "test_reader.h"
+
+#include "structs.h"
+
 #include <fstream>
 #include <iostream>
-
-extern std::vector<std::string> errors;
-
-module test_reader;
-
-import structs;
-
 
 
 #define PROJECT_DIR std::filesystem::path(__FILE__).parent_path().parent_path()
@@ -79,10 +77,10 @@ test read_test(test_container test, size_t index) {
 
     // find [[expect_fail]]
     bool expect_fail = false;
-    constexpr auto expect_str = "[[expect_fail]]";
+    constexpr auto expect_fail_str = "[[expect_fail]]";
     size_t pos = file_contents.find('\n');
     std::string firstLine = (pos == std::string::npos) ? file_contents : file_contents.substr(0, pos);
-    if (firstLine == expect_str) {
+    if (firstLine == expect_fail_str) {
         expect_fail = true;
         if (pos == std::string::npos) {
             file_contents.clear();

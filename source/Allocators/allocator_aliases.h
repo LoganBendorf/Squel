@@ -2,11 +2,14 @@
 
 #include "allocator_string.h"
 #include "allocator_structs.h"
+#include "macros.h"
 
 #include <memory>
 #include <vector>
 #include <string>
 #include <variant>
+#include <source_location>
+#include <csignal>
 
 template<typename T>
 class main_alloc;
@@ -32,13 +35,18 @@ using UP = std::unique_ptr<T, main_alloc_deleter<T>>;
     UP<type>(new type(__VA_ARGS__))
 
 template<typename To, typename From>
-UP<To> cast_UP( UP<From>& ptr ) {
-    // simply move it for them
-    return cast_UP<To>( std::move(ptr) );
+UP<To> cast_UP(UP<From>& ptr, const std::source_location& loc = std::source_location::current()) {
+    if (ptr == nullptr) {
+        FATAL_ERROR_STACK_TRACE_EXIT("cast_UP received nullptr", loc); }
+        
+    return cast_UP<To>(std::move(ptr), loc);
 }
 
 template<typename To, typename From>
-UP<To> cast_UP( UP<From>&& ptr ) {
+UP<To> cast_UP( UP<From>&& ptr, const std::source_location& loc = std::source_location::current()) {  // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
+    if (ptr == nullptr) {
+        FATAL_ERROR_STACK_TRACE_EXIT("cast_UP received nullptr", loc); }
+
     if constexpr (std::is_convertible_v<From*, To*>) {
         return UP<To>(static_cast<To*>(ptr.release()));
     } else {
@@ -48,9 +56,56 @@ UP<To> cast_UP( UP<From>&& ptr ) {
             ptr.release();
             return UP<To>(casted);
         }
+        FATAL_ERROR_STACK_TRACE_EXIT("cast_UP failed", loc);
         return nullptr;
     }
 }
+
+
+#define CAST_UP(to_type, from_ptr) \
+    cast_UP<to_type>(std::move(from_ptr), std::source_location::current())
+
+
+
+template<typename To, typename From>
+const To* cast_UP_to_const_raw(const UP<From>& ptr, const std::source_location& loc = std::source_location::current()) {
+    if (ptr == nullptr) {
+        FATAL_ERROR_STACK_TRACE_EXIT("cast_raw received nullptr", loc); 
+    }
+    
+    if constexpr (std::is_convertible_v<From*, To*>) {
+        return static_cast<const To*>(ptr.get());
+    } else {
+        const To* casted = dynamic_cast<const To*>(ptr.get());
+        if (!casted) {
+            FATAL_ERROR_STACK_TRACE_EXIT("cast_raw failed", loc);
+        }
+        return casted;
+    }
+}
+
+#define CAST_UP_TO_CONST_RAW(to_type, from_ptr) \
+    cast_UP_to_const_raw<to_type>(from_ptr, std::source_location::current())
+
+template<typename To, typename From>
+const To* cast_const_raw_to_const_raw(const From* ptr, const std::source_location& loc = std::source_location::current()) {
+    if (ptr == nullptr) {
+        FATAL_ERROR_STACK_TRACE_EXIT("cast_raw received nullptr", loc); 
+    }
+    
+    if constexpr (std::is_convertible_v<From*, To*>) {
+        return static_cast<const To*>(ptr);
+    } else {
+        const To* casted = dynamic_cast<const To*>(ptr);
+        if (!casted) {
+            FATAL_ERROR_STACK_TRACE_EXIT("cast_raw failed", loc);
+        }
+        return casted;
+    }
+}
+
+#define CAST_CONST_RAW_TO_CONST_RAW(to_type, from_ptr) \
+    cast_const_raw_to_const_raw<to_type>(from_ptr, std::source_location::current())
 
 
 
@@ -69,9 +124,7 @@ SP<To> cast_SP(const SP<From>& ptr) {
 }
 
 template<typename To, typename From>
-SP<To> cast_SP(SP<From>&& ptr) {
-    // For rvalue references, we can still use the same logic
-    // The shared_ptr will handle the move semantics internally
+SP<To> cast_SP(SP<From>&& ptr) { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     return cast_SP<To>(ptr);
 }
 

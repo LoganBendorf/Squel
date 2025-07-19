@@ -1,31 +1,31 @@
-module;
+#include "pch.h"
 
+#include "parser.h"
+
+#include "node.h"
+#include "helpers.h"
+#include "object.h"
+#include "token.h"
+#include "environment.h"
 #include "allocator_aliases.h"
+#include "macros.h"
+#include "structs.h"
+#include "logger.h"
 
-#include <expected>
+extern logger<error_msg> sql_errors;
 
-extern std::vector<std::string> errors;
-
-import structs;
-extern display_table display_tab;
-
-import object;
-extern avec<SP<table_object>> g_tables;
-extern std::vector<SP<evaluated_function_object>> g_functions;
-
-module parser;
-
-import node;
-import helpers;
-import environment;
-import token;
+extern cmd_line_arguments g_args;
 
 static avec<UP<node>> nodes;
 
 static std::vector<token> tokens;
 static size_t token_position = 0;
 
-static token prev_token = {ERROR_TOKEN, std::string("garbage"), 0, 0};
+extern bool DEBUG;
+
+
+
+static token prev_token = {ERROR_TOKEN, "garbage", 0, 0};
 
 
 
@@ -39,14 +39,13 @@ static void parse_create_table();
 
 static std::expected<UP<group_object>, UP<error_object>> parse_comma_seperated_list(token_type end_val);
 static std::expected<std::pair<UP<group_object>, token_type>, UP<error_object>> parse_comma_seperated_list_ADVANCED(const avec<token_type>& end_values); // Can add precedence as well if I feel like it
+static std::expected<UP<group_object>, UP<error_object>> parse_list_until_comma(std::vector<token_type> end_vals);
 
 static std::expected<UP<block_statement>, UP<error_object>> parse_function();
 static UP<object> prefix_parse(token tok);
-static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(UP<object> left);
-[[nodiscard]] static UP<object> parse_expression(size_t precedence);
+static std::expected<UP<infix_expr_object>, UP<error_object>> infix_parse(UP<object> left);
 
 
-static token peek();
 static token_type peek_type();
 static std::string peek_data();
 [[maybe_unused]]static token peek_ahead();
@@ -57,116 +56,104 @@ enum precedences : std::uint8_t {
 };  
 
 
+#define log_sql_error(x)                               \
+    do {                                               \
+        std::stringstream err;                         \
+        err << x;                                      \
+        sql_errors.add_msg(err.str(), CUR_LOC);        \
+    } while(0)                
+
+    
+
 // For simple queries, unlikely speedup was 2x. For more complicated ones, speedup was about 4x
-#define push_err_ret(x)                                 \
-        token cur_tok;                                  \
-        if (token_position >= tokens.size()) [[unlikely]] {\
-            if (tokens.size() > 0 && token_position >= tokens.size()) { \
-                cur_tok = tokens[tokens.size() - 1];    \
-                cur_tok.position += cur_tok.data.size();\
-            } else {                                    \
+#define push_err_ret(x)                                                                 \
+        token cur_tok;                                                                  \
+        if (token_position >= tokens.size()) [[unlikely]] {                             \
+            if (tokens.size() > 0 && token_position >= tokens.size()) {                 \
+                cur_tok = tokens[tokens.size() - 1];                                    \
+                cur_tok.position += cur_tok.data.size();                                \
+            } else {                                                                    \
                 cur_tok.type = LINE_END; cur_tok.data = ""; cur_tok.line = SIZE_T_MAX; cur_tok.position = SIZE_T_MAX; \
-            }                                           \
-        } else {                                        \
-            cur_tok = tokens[token_position];}          \
-        std::stringstream err;                          \
-        err << (x);                                     \
-        err << ". Line = " << cur_tok.line << ", position = " << cur_tok.position;\
-        errors.emplace_back(std::move(err).str());      \
-        return                                  
+            }                                                                           \
+        } else {                                                                        \
+            cur_tok = tokens[token_position];}                                          \
+        std::stringstream err;                                                          \
+        err << x;                                                                       \
+        sql_errors.add_msg<parser_error_msg>(err.str(), cur_tok, CUR_LOC);              \
+        return;
 
-#define push_err_ret_empty_str(x)                       \
-        token cur_tok;                                  \
-        if (token_position >= tokens.size()) [[unlikely]]{              \
-            if (tokens.size() > 0 && token_position >= tokens.size()) { \
-                cur_tok = tokens[tokens.size() - 1];    \
-                cur_tok.position += cur_tok.data.size();\
-            } else {                                    \
-                cur_tok.type = LINE_END; cur_tok.data = ""; cur_tok.line = SIZE_T_MAX; cur_tok.position = SIZE_T_MAX; \
-            }                                           \
-        } else {                                        \
-            cur_tok = tokens[token_position];}          \
-        std::stringstream err;                          \
-        err << (x);                                     \
-        err << ". Line = " << cur_tok.line << ", position = " << cur_tok.position;\
-        errors.emplace_back(std::move(err).str());      \
-        return ""   
 
-#define push_err_ret_err_obj(x)                         \
-        token cur_tok;                                  \
-        if (token_position >= tokens.size()) [[unlikely]]{          \
-            if (tokens.size() > 0 && token_position >= tokens.size()) { \
-                cur_tok = tokens[tokens.size() - 1];    \
-                cur_tok.position += cur_tok.data.size();\
-            } else {                                    \
+#define push_err_ret_err_obj(x)                                                         \
+        token cur_tok;                                                                  \
+        if (token_position >= tokens.size()) [[unlikely]]{                              \
+            if (tokens.size() > 0 && token_position >= tokens.size()) {                 \
+                cur_tok = tokens[tokens.size() - 1];                                    \
+                cur_tok.position += cur_tok.data.size();                                \
+            } else {                                                                    \
                 cur_tok.type = LINE_END; cur_tok.data = ""; cur_tok.line = SIZE_T_MAX; cur_tok.position = SIZE_T_MAX; \
-            }                                           \
-        } else {                                        \
-            cur_tok = tokens[token_position];}          \
-        std::stringstream err;                          \
-        err << (x);                                     \
-        err << ". Line = " << cur_tok.line << ", position = " << cur_tok.position;\
-        errors.emplace_back(err.str());                 \
-        return UP<object>(new error_object(err.str()));
+            }                                                                           \
+        } else {                                                                        \
+            cur_tok = tokens[token_position];}                                          \
+        std::stringstream err;                                                          \
+        err << x;                                                                       \
+        sql_errors.add_msg<parser_error_msg>(err.str(), cur_tok, CUR_LOC);              \
+        return UP<object>(new error_object(err.str()))
 
-#define push_err_ret_unx_err_obj(x)                     \
-        token cur_tok;                                  \
-        if (token_position >= tokens.size()) [[unlikely]]{          \
-            if (tokens.size() > 0 && token_position >= tokens.size()) { \
-                cur_tok = tokens[tokens.size() - 1];    \
-                cur_tok.position += cur_tok.data.size();\
-            } else {                                    \
+#define push_err_ret_unx_err_obj(x)                                                     \
+        token cur_tok;                                                                  \
+        if (token_position >= tokens.size()) [[unlikely]] {                             \
+            if (tokens.size() > 0 && token_position >= tokens.size()) {                 \
+                cur_tok = tokens[tokens.size() - 1];                                    \
+                cur_tok.position += cur_tok.data.size();                                \
+            } else {                                                                    \
                 cur_tok.type = LINE_END; cur_tok.data = ""; cur_tok.line = SIZE_T_MAX; cur_tok.position = SIZE_T_MAX; \
-            }                                           \
-        } else {                                        \
-            cur_tok = tokens[token_position];}          \
-        std::stringstream err;                          \
-        err << (x);                                     \
-        err << ". Line = " << cur_tok.line << ", position = " << cur_tok.position;\
-        errors.emplace_back(err.str());                 \
+            }                                                                           \
+        } else {                                                                        \
+            cur_tok = tokens[token_position];}                                          \
+        std::stringstream err;                                                          \
+        err << x;                                                                       \
+        sql_errors.add_msg<parser_error_msg>(err.str(), cur_tok, CUR_LOC);              \
         return std::unexpected(MAKE_UP(error_object, err.str()));
 
-#define push_err_ret_err_obj_prev_tok(x)                \
-        token cur_tok = prev_token;                     \
-        std::stringstream err;                          \
-        err << (x);                                     \
-        err << ". Line = " << prev_token.line << ", position = " << prev_token.position;\
-        errors.emplace_back(err.str());                 \
+#define push_err_ret_err_obj_prev_tok(x)                                                \
+        token cur_tok = prev_token;                                                     \
+        std::stringstream err;                                                          \
+        err << x;                                                                       \
+        sql_errors.add_msg<parser_error_msg>(err.str(), cur_tok, CUR_LOC);              \
         return UP<object>(new error_object(err.str()));
 
 
 // sussy using macro in macro
-#define advance_and_check(x)                \
-    prev_token = tokens[token_position];    \
-    token_position++;                       \
-    if (token_position >= tokens.size()) [[unlikely]]{  \
-        push_err_ret(x);}              
+// push_err_ret
+#define advance_and_check(x)                            \
+    if (token_position < tokens.size()) [[likely]] {    \
+        prev_token = tokens[token_position]; }          \
+    token_position++;                                   \
+    if (token_position >= tokens.size() && (!g_args.has_query && !g_args.run_tests && !g_args.background)) [[unlikely]] {  \
+        push_err_ret(x); }              
 
 // sussy using macro in macro
-#define advance_and_check_ret_str(x)        \
-    prev_token = tokens[token_position];    \
-    token_position++;                       \
-    if (token_position >= tokens.size()) [[unlikely]]{  \
-        push_err_ret_empty_str(x);} 
+// push_err_ret_err_obj
+#define advance_and_check_ret_obj(x)                    \
+    if (token_position < tokens.size()) [[likely]] {    \
+        prev_token = tokens[token_position]; }          \
+    token_position++;                                   \
+    if (token_position >= tokens.size() && (!g_args.has_query && !g_args.run_tests && !g_args.background)) [[unlikely]] {  \
+        push_err_ret_err_obj(x); }     
 
-// sussy using macro in macro
-#define advance_and_check_ret_obj(x)        \
-    prev_token = tokens[token_position];    \
-    token_position++;                       \
-    if (token_position >= tokens.size()) [[unlikely]]{  \
-        push_err_ret_err_obj(x);} 
-
-#define advance_and_check_ret_unx_obj(x)        \
-    prev_token = tokens[token_position];    \
-    token_position++;                       \
-    if (token_position >= tokens.size()) [[unlikely]]{  \
-        push_err_ret_unx_err_obj(x);} 
+// push_err_ret_unx_err_obj
+#define advance_and_check_ret_unx_obj(x)                \
+    if (token_position < tokens.size()) [[likely]] {    \
+        prev_token = tokens[token_position]; }          \
+    token_position++;                                   \
+    if (token_position >= tokens.size() && (!g_args.has_query && !g_args.run_tests && !g_args.background)) [[unlikely]] {  \
+        push_err_ret_unx_err_obj(x); }     
 
 
 void parser_init(std::vector<token> toks) {
     tokens = toks;
     token_position = 0;
-    prev_token = {.type=ERROR_TOKEN, .data=std::string("garbage"), .line=0, .position=0};
+    prev_token = {.type=ERROR_TOKEN, .data="garbage", .line=0, .position=0};
 
     nodes = avec<UP<node>>();
 }
@@ -174,7 +161,7 @@ void parser_init(std::vector<token> toks) {
 avec<UP<node>> parse() {
 
     if (tokens.size() == 0) {
-        errors.emplace_back("parse(): No tokens");
+        log_sql_error("No tokens");
         return std::move(nodes);
     }
 
@@ -190,25 +177,25 @@ avec<UP<node>> parse() {
             if (result.has_value()) {
                 nodes.emplace_back(UP<node>(new insert_into(std::move(*result))));
             } else {
-                errors.emplace_back("parse_insert(): Returned error object"); }
+                log_sql_error("parse_insert(): Returned error object"); }
         } break;
         case SELECT: {
             UP<object> result = parse_select();
             if (result->type() == ERROR_OBJ) {
-                errors.emplace_back("parse_select(): Returned error object"); break; }
+                log_sql_error("parse_select(): Returned error object"); break; }
             // Advance past semicolon
             if (peek_type() != SEMICOLON) {
-                errors.emplace_back("parse_select(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
+                log_sql_error("parse_select(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
             } else {
                 token_position++; }
 
             switch(result->type()) {
-            case SELECT_OBJECT:
+            case SELECT_OBJ:
                 nodes.emplace_back(UP<node>(new select_node(std::move(result)))); break;
-            case SELECT_FROM_OBJECT:
+            case SELECT_FROM_OBJ:
                 nodes.emplace_back(UP<node>(new select_from(std::move(result)))); break;
             default:
-                errors.emplace_back("parse_select(): Returned unknown object type"); } 
+                log_sql_error("parse_select(): Returned unknown object type"); } 
             
         } break;
         case ALTER:
@@ -217,23 +204,21 @@ avec<UP<node>> parse() {
         case ASSERT: {
             auto result = parse_assert();
             if (!result.has_value()) {
-                errors.emplace_back("parse_assert(): Returned bad object!"); break; }
+                log_sql_error("parse_assert(): Returned bad object!"); break; }
                 
             if (peek_type() != SEMICOLON) {
-                errors.emplace_back("parse_assert(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
+                log_sql_error("parse_assert(): Missing ending semicolon, instead got " + token_type_to_string(peek_type()));
             } else {
                 token_position++; }
 
             nodes.emplace_back(UP<node>(new assert_node(std::move(*result))));
         } break;
         default:
-            std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = "
-            + token_type_to_string(peek().type) + ". Line = " + std::to_string(peek().line) 
-            + ". Position = " + std::to_string(peek().position);
-            errors.emplace_back(error);
+            std::string error = "Unknown keyword or inappropriate usage (" + peek_data() +  ") Token type = " + token_type_to_string(peek().type);
+            sql_errors.add_msg<parser_error_msg>(error, peek(), CUR_LOC);
         }
 
-        if (!errors.empty()) {
+        if (sql_errors.has_msgs()) {
             // Look for end of statement ';', if it's there, go to it then continue looking for errors in the next statement
             while (token_position < tokens.size() && peek_type() != SEMICOLON) {
                 token_position++; }
@@ -264,14 +249,13 @@ static std::expected<UP<assert_object>, UP<error_object>> parse_assert() {
     if (expr->type() == ERROR_OBJ) {
         push_err_ret_unx_err_obj("Failed to parse ASSERT expression"); }
 
-    return MAKE_UP(assert_object, std::move(expr), line);
+    return MAKE_UP(assert_object, line, std::move(expr));
 }
 
+// FIXME Should just use table_detail_object
 static void parse_alter() {
-    if (peek_type() != ALTER) {
-        std::cout << "parse_alter() called with non-ALTER token";
-        exit(1);
-    }
+    
+    if (peek_type() != ALTER) { FATAL_ERROR_THROW("parse_alter() called with non-ALTER token", CUR_LOC); }
 
     advance_and_check("No tokens after ALTER");
 
@@ -295,17 +279,20 @@ static void parse_alter() {
     advance_and_check("No tokens after ADD COLUMN");
 
     UP<object> col_obj = parse_expression(LOWEST);
-    if (col_obj->type() == ERROR_OBJ) { //!!MAJOR should be != COLUM_OBJ?
+    if (col_obj->type() == ERROR_OBJ) {
         return; }
+    
+    // Needs to check type aswell
 
-    UP<column_object> col = MAKE_UP(column_object, std::move(col_obj));
+    UP<table_detail_object> col; // idk yet
 
+    // Fix aswell
     if (peek_type() == DEFAULT) {
         UP<object> default_value = parse_expression(LOWEST);
         if (default_value->type() == ERROR_OBJ) {
             return; }
-
-        col->default_value = std::move(default_value);
+        if (default_value->type() != DEFAULT_VALUE_OBJ) {
+            return; }
     }
 
     if (peek_type() != SEMICOLON) {
@@ -313,13 +300,13 @@ static void parse_alter() {
 
     token_position++;
 
-    nodes.push_back(UP<node>(new alter_table(std::move(table_name), cast_UP<object>(col))));
+    nodes.push_back(UP<node>(new alter_table_node(std::move(table_name), CAST_UP(object, col))));
 }
 
 static std::expected<UP<group_object>, UP<error_object>> parse_values() {
 
     if (peek_type() != VALUES) {
-        push_err_ret_unx_err_obj("parse_values(): with non-VALUES TOKEN!!!!!!!!!!!!");}
+        FATAL_ERROR_THROW("parse_values() called with non-VALUES token", CUR_LOC); }
 
     advance_and_check_ret_unx_obj("Missing open parenthesis after VALUES");
 
@@ -345,9 +332,8 @@ static std::expected<UP<group_object>, UP<error_object>> parse_values() {
 
 // inserts rows
 static std::expected<UP<insert_into_object>, UP<error_object>> parse_insert() {
-    if (peek_type() != INSERT) {
-        std::cout << "parse_insert() called with non-INSERT token";
-        exit(1);}
+
+    if (peek_type() != INSERT) { FATAL_ERROR_THROW("parse_insert() called with non-INSERT token", CUR_LOC); }
 
     advance_and_check_ret_unx_obj("No tokens after INSERT");
 
@@ -453,7 +439,7 @@ static std::expected<std::pair<UP<group_object>, token_type>, UP<error_object>> 
     while (loop_count++ < 100) {
         UP<object> cur = parse_expression(LOWEST);
         if (cur->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(cur)); }
+            return std::unexpected(CAST_UP(error_object, cur)); }
 
         list.emplace_back(std::move(cur));
         
@@ -465,7 +451,7 @@ static std::expected<std::pair<UP<group_object>, token_type>, UP<error_object>> 
             push_err_ret_unx_err_obj("Items in list must be comma seperated, got (" + token_type_to_string(peek_type()) + ")");
         }
 
-        advance_and_check_ret_unx_obj("parse_comma_seperated_list(): No values after comma");
+        advance_and_check_ret_unx_obj("parse_comma_seperated_list_ADVANCED(): No values after comma");
     }
 
     if (loop_count >= 100) {
@@ -488,7 +474,7 @@ static std::expected<UP<group_object>, UP<error_object>> parse_comma_seperated_l
     while (loop_count++ < 100) {
         UP<object> cur = parse_expression(LOWEST);
         if (cur->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(cur)); }
+            return std::unexpected(CAST_UP(error_object, cur)); }
 
         list.push_back(std::move(cur));
         
@@ -516,14 +502,14 @@ static std::expected<UP<group_object>, UP<error_object>> parse_comma_seperated_l
     while (loop_count++ < 100) {
         UP<object> cur = parse_expression(LOWEST);
         if (cur->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(cur)); }
+            return std::unexpected(CAST_UP(error_object, cur)); }
 
         list.push_back(std::move(cur));
         
         if (peek_type() != COMMA) {
             break; }
 
-        advance_and_check_ret_unx_obj("parse_comma_seperated_list(): No values after comma");
+        advance_and_check_ret_unx_obj("parse_comma_seperated_list_end_if_not_comma(): No values after comma");
     }
 
     if (loop_count >= 100) {
@@ -532,11 +518,42 @@ static std::expected<UP<group_object>, UP<error_object>> parse_comma_seperated_l
     return MAKE_UP(group_object, std::move(list));
 }
 
+// Starts on first value, end on end val
+static std::expected<UP<group_object>, UP<error_object>> parse_list_until_comma(std::vector<token_type> end_vals) {
+
+    avec<UP<object>> list;
+
+    size_t loop_count = 0;
+    while (loop_count++ < 100) {
+        UP<object> cur = parse_expression(LOWEST);
+        if (cur->type() == ERROR_OBJ) {
+            return std::unexpected(CAST_UP(error_object, cur)); }
+
+        list.push_back(std::move(cur));
+        
+        if (peek_type() == COMMA) { break; }
+
+        bool should_break = false;
+        for (const auto& end_val : end_vals) {
+            if (peek_type() == end_val) {
+                should_break = true;
+                break; 
+            }
+        }
+        if (should_break) { break; }
+    }
+
+    if (loop_count >= 100) {
+        push_err_ret_unx_err_obj("Too many loops during list traversal, likely weird error");}
+
+    return MAKE_UP(group_object, std::move(list));
+}
+
 
 [[maybe_unused]] static bool is_data_type_token(token tok) {
     switch (tok.type) {
     case CHAR: case VARCHAR: case BOOL: case BOOLEAN: case DATE: case YEAR: case SET: case BIT: case INT: case INTEGER: case FLOAT: case DOUBLE: case NONE: case UNSIGNED: case ZEROFILL:
-    case TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB: case DEC: case DECIMAL:
+    case TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB: case DEC: case DECIMAL: case TIMESTAMP:
         return true;
         break;
     default:
@@ -546,13 +563,12 @@ static std::expected<UP<group_object>, UP<error_object>> parse_comma_seperated_l
 
 
 static UP<object> parse_select() {
-    if (peek_type() != SELECT) {
-        std::cout << "parse_select() called with non-select token";
-        exit(1);}
+
+    if (peek_type() != SELECT) { FATAL_ERROR_THROW("parse_select() called with non-SELECT token", CUR_LOC); }
 
     advance_and_check_ret_obj("No tokens after SELECT")
 
-    const avec<token_type> end_types = {FROM, SEMICOLON, CLOSE_PAREN};  //!!MAJOR maybe make global open paren count and return error if count is wrong
+    const avec<token_type> end_types = {FROM, SEMICOLON, CLOSE_PAREN};  // TODO Maybe make global open paren count and return error if count is wrong
     auto result = parse_comma_seperated_list_ADVANCED(end_types);
     if (!result.has_value()) {
         push_err_ret_err_obj("SELECT: Failed to parse SELECT column indexes"); }
@@ -564,7 +580,7 @@ static UP<object> parse_select() {
         push_err_ret_err_obj("SELECT: Failed to parse SELECT column indexes, strange end type (" + token_type_to_string(end_type) + ")"); }
     
 
-    avec<UP<object>> selectors = std::move(cast_UP<group_object>(selector_group)->elements);
+    avec<UP<object>> selectors = std::move(CAST_UP(group_object, selector_group)->elements);
 
     if (selectors.size() == 0) {
         push_err_ret_err_obj("No values after SELECT");}
@@ -578,7 +594,7 @@ static UP<object> parse_select() {
         
         UP<select_object> info = MAKE_UP(select_object, std::move(selector));
 
-        return cast_UP<object>(info);
+        return CAST_UP(object, info);
     }
 
     if (end_type != FROM) {
@@ -594,8 +610,8 @@ static UP<object> parse_select() {
 
     // Get condition chain
     avec<UP<object>> clause_chain;
-    while (peek_type() != SEMICOLON && peek_type() != LINE_END && peek_type() != CLOSE_PAREN) { //!!MAJOR don't like this close paren check, would prefer to not even have to checks
-
+    while (peek_type() != SEMICOLON && peek_type() != LINE_END && peek_type() != CLOSE_PAREN) { // FIXME Don't like this close paren check, would prefer to not even have to check
+                                                                                                // Maybe use a global paren count
         UP<object> clause = parse_expression(LOWEST);
         if (clause->type() != INFIX_EXPRESSION_OBJ && clause->type() != PREFIX_EXPRESSION_OBJ && clause->type() != STRING_OBJ)  {
             push_err_ret_err_obj("Expected clause in SELECT FROM, got (" + clause->inspect() + ")");}
@@ -606,13 +622,11 @@ static UP<object> parse_select() {
 
     UP<select_from_object> info = MAKE_UP(select_from_object, std::move(selectors), std::move(clause_chain));
     
-    return cast_UP<object>(info);
+    return CAST_UP(object, info);
 }
 
 static void parse_create() {
-    if (peek_type() != CREATE) {
-        std::cout << "parse_create() called with non-create token";
-        exit(1);}
+    if (peek_type() != CREATE) { FATAL_ERROR_THROW("parse_create() called with non-CREATE token", CUR_LOC); }
 
     advance_and_check("No tokens after CREATE");
     
@@ -635,9 +649,7 @@ static void parse_create() {
 }
 
 static void parse_create_or_replace_function() {
-    if (peek_type() != FUNCTION) {
-        std::cout << "parse_create_or_replace_function() called with non-FUNCTION token";
-        exit(1);}
+    if (peek_type() != FUNCTION) { FATAL_ERROR_THROW("parse_create_or_replace_function() called with non-FUNCTION token", CUR_LOC); }
 
     advance_and_check("No tokens after FUNCTION");
 
@@ -658,7 +670,7 @@ static void parse_create_or_replace_function() {
     if (!result.has_value()) {
         push_err_ret("Failed to parse parameters"); }
 
-    UP<group_object>& parameters = *result;
+    UP<group_object>& parameters = *result; // FIXME Get rid of these references and use std::move(*result)
     
     advance_and_check("No tokens after parameters");
 
@@ -676,19 +688,18 @@ static void parse_create_or_replace_function() {
     if (func_body->type() != BLOCK_STATEMENT) {
         push_err_ret("Failed to parse function body");}
 
-    UP<function_object> func = MAKE_UP(function_object, name, std::move(parameters), cast_UP<SQL_data_type_object>(return_type), cast_UP<block_statement>(func_body));
+    UP<function_object> func = MAKE_UP(function_object, name, std::move(parameters->elements), CAST_UP(SQL_data_type_object, return_type), CAST_UP(block_statement, func_body));
 
     UP<function> info = MAKE_UP(function, std::move(func));
     
-    nodes.push_back(cast_UP<node>(info));
+    nodes.push_back(CAST_UP(node, info));
 }
 
 
 // tokens should point to TABLE
 static void parse_create_table() {
-    if (peek_type() != TABLE) {
-        std::cout << "parse_create_table() called with non-create_table token";
-        exit(1);}
+
+    if (peek_type() != TABLE) { FATAL_ERROR_THROW("parse_create_table() called with non-TABLE token", CUR_LOC); }
         
     advance_and_check("No tokens after CREATE TABLE");
 
@@ -704,81 +715,48 @@ static void parse_create_table() {
     
     advance_and_check("No data in CREATE TABLE");
 
-    avec<UP<table_detail_object>> details;
+    auto result = parse_comma_seperated_list(CLOSE_PAREN);
+    if (!result.has_value()) {
+        push_err_ret("Failed to parse CREATE TABLE columns"); }
 
-    size_t max_loops = 0;
-    while (max_loops++ < 100) {
-        UP<object> name = parse_expression(LOWEST);
-        if (name->type() == ERROR_OBJ) {
-            push_err_ret("CREATE TABLE: Failed to parse column name"); }
+    UP<group_object> details = CAST_UP(group_object, std::move(*result));;
 
-        UP<object> data_type; // Hmmmmmmmmmm, not the greatest
-        if (name->type() == PARAMETER_OBJ) {
-            UP<parameter_object> param = cast_UP<parameter_object>(name);
-            if (param->data_type->type() == ERROR_OBJ) {
-                return; }
-
-            data_type = cast_UP<object>(param->data_type);
-            name = UP<object>(new string_object(param->name));
-        } else {
-            data_type = parse_expression(LOWEST);
-            if (data_type->type() == ERROR_OBJ) {
-                push_err_ret("CREATE TABLE: Failed to parse column data type"); }
+    // Verify types
+    if (DEBUG) [[unlikely]] { std::cout << "Parse Create Table, types:\n"; }
+    for (const auto& obj : details->elements) {
+        if (DEBUG) [[unlikely]] { std::cout << "\t" << object_type_to_astring(obj->type()) << std::endl; }
+        switch (obj->type()) {
+            case PARAMETER_OBJ: case TABLE_COLUMN_EXPR_OBJ: case TABLE_EXPR_OBJ: break;
+            default: push_err_ret("CREATE TABLE: Invalid object in table details. Type: " << object_type_to_astring(obj->type()) << ", (" << obj->inspect() << ")"); break;
         }
-
-
-        UP<object> default_value = UP<object>(new null_object());
-        if (peek_type() == DEFAULT) {
-            advance_and_check("CREATE TABLE: No values after DEFAULT");
-            default_value = parse_expression(LOWEST);
-            if (default_value->type() == ERROR_OBJ) {
-                push_err_ret("CREATE TABLE: Failed to parse column default value"); } 
-        }
-
-        if (name->type() != STRING_OBJ) {
-            push_err_ret("CREATE TABLE: Name is not string"); }
-
-        if (data_type->type() != SQL_DATA_TYPE_OBJ) {
-             push_err_ret("CREATE TABLE: Couldn't find data type"); }
-
-        UP<table_detail_object> detail = MAKE_UP(table_detail_object, name->data(), cast_UP<SQL_data_type_object>(data_type), std::move(default_value));
-
-        details.push_back(std::move(detail));
-
-        if (peek_type() == CLOSE_PAREN) {
-            break; }
-
-        if (peek_type() != COMMA) {
-            push_err_ret("CREATE TABLE: Table details not seperated by comma"); }
-        
-        advance_and_check("CREATE TABLE: Table details missing closing );")
-        
     }
 
-    if (max_loops >= 100) {
-        push_err_ret("parse_create_table(): Too many loops in field search, bug or over 100 fields");}
-
+    if (DEBUG) [[unlikely]] {
+        std::cout << "\nParse Create Table, inspected:\n";
+        for (const auto& obj : details->elements) {
+            std::cout << "\t" << obj->inspect() << std::endl;
+        }
+    }
+        
     advance_and_check("No closing ';' at end of CREATE TABLE");
 
     if (peek_type() != SEMICOLON) {
         push_err_ret("No closing ';' at end of CREATE TABLE");}
 
-        
-
     token_position++;
 
     UP<create_table> info = MAKE_UP(create_table, table_name, std::move(details));   
 
-    nodes.push_back(cast_UP<node>(info));
+    nodes.push_back(CAST_UP(node, info));
 }
 
 
 
 static size_t numeric_precedence(const token& tok) {
     switch (tok.type) {
-        case AS:            return 1; break; // !!MAJOR not sure
-        case WHERE:         return 1; break; // !!MAJOR not sure
-        case LEFT:          return 1; break; // !!MAJOR not sure
+        case AS:            return 1; break; // Precedence seems to work
+        case WHERE:         return 1; break; // Precedence seems to work
+        case LEFT:          return 1; break; // Precedence seems to work
         case EQUAL:         return 2; break;
         case NOT_EQUAL:     return 2; break;
         case LESS_THAN:     return 3; break;
@@ -821,9 +799,9 @@ static UP<object> parse_prefix_as() {
     if (peek_type() == $$) {
         auto result = parse_function();
         if (result.has_value()) {
-            return cast_UP<object>(std::move(*result));
+            return CAST_UP(object, std::move(*result));
         } else {
-            return cast_UP<object>(std::move(result).error());
+            return CAST_UP(object, std::move(result).error());
         }
     } else {
         push_err_ret_err_obj("AS can only be prefix for $$ in a function (for now)"); 
@@ -843,7 +821,7 @@ static std::expected<UP<if_statement>, UP<error_object>> parse_prefix_if() {
     // CONDITION
     UP<object> condition = parse_expression(LOWEST); // LOWEST or PREFIX??
     if (condition->type() == ERROR_OBJ) {
-        return std::unexpected(cast_UP<error_object>(condition)); }
+        return std::unexpected(CAST_UP(error_object, condition)); }
 
     if (peek_type() != THEN) {
         push_err_ret_unx_err_obj("IF statement missing THEN"); }
@@ -858,7 +836,7 @@ static std::expected<UP<if_statement>, UP<error_object>> parse_prefix_if() {
         while (max_loops++ < 100) {
             UP<object> expression = parse_expression(LOWEST);
             if (expression->type() == ERROR_OBJ) {
-                return std::unexpected(cast_UP<error_object>(expression)); }
+                return std::unexpected(CAST_UP(error_object, expression)); }
             
             if (peek_type() == END) {
                 break; }
@@ -870,7 +848,7 @@ static std::expected<UP<if_statement>, UP<error_object>> parse_prefix_if() {
     } else {
         UP<object> expression = parse_expression(LOWEST);
         if (expression->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(expression)); }
+            return std::unexpected(CAST_UP(error_object, expression)); }
 
         body.push_back(std::move(expression));
     }
@@ -885,12 +863,12 @@ static std::expected<UP<if_statement>, UP<error_object>> parse_prefix_if() {
 
         UP<object> statement = parse_expression(LOWEST);
         if (statement->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(statement)); }
+            return std::unexpected(CAST_UP(error_object, statement)); }
 
         if (statement->type() != IF_STATEMENT) {
             push_err_ret_unx_err_obj("ELSIF statement evaluated to non-IF statement"); }
 
-        prev = cast_UP<if_statement>(statement).get();
+        prev = CAST_UP(if_statement, statement).get();
         prev->other = std::move(statement);
     }
 
@@ -901,7 +879,7 @@ static std::expected<UP<if_statement>, UP<error_object>> parse_prefix_if() {
     if (peek_type() == ELSE) {
         UP<object> statement = parse_expression(LOWEST);
         if (statement->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(statement)); }
+            return std::unexpected(CAST_UP(error_object, statement)); }
 
         if (statement->type() != BLOCK_STATEMENT) {
             push_err_ret_unx_err_obj("ELSE statement evaluated to non-BLOCK statement"); }
@@ -912,7 +890,7 @@ static std::expected<UP<if_statement>, UP<error_object>> parse_prefix_if() {
     if (starter_token.type == IF) {
         UP<object> endif = parse_expression(LOWEST);
         if (endif->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(endif)); }
+            return std::unexpected(CAST_UP(error_object, endif)); }
             
         if (endif->type() != END_IF_STATEMENT) {
             push_err_ret_unx_err_obj("No END IF in " + token_type_to_string(starter_token.type) + " statement, got (" + std::string(endif->inspect()) + ")"); }   
@@ -937,7 +915,7 @@ static std::expected<UP<block_statement>, UP<error_object>> parse_block_statemen
         while (max_loops++ < 100) {
             UP<object> expression = parse_expression(LOWEST);
             if (expression->type() == ERROR_OBJ) {
-                return std::unexpected(cast_UP<error_object>(expression)); }
+                return std::unexpected(CAST_UP(error_object, expression)); }
             
             if (peek_type() == END) {
                 break; }
@@ -949,7 +927,7 @@ static std::expected<UP<block_statement>, UP<error_object>> parse_block_statemen
     } else {
         UP<object> expression = parse_expression(LOWEST);
         if (expression->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(expression)); }
+            return std::unexpected(CAST_UP(error_object, expression)); }
 
         body.push_back(std::move(expression));
     }
@@ -974,7 +952,7 @@ static std::expected<UP<block_statement>, UP<error_object>> parse_function() {
     while (max_loops++ < 100) {
         UP<object> statement = parse_expression(LOWEST);
         if (statement->type() == ERROR_OBJ) {
-            return std::unexpected(cast_UP<error_object>(statement)); }
+            return std::unexpected(CAST_UP(error_object, statement)); }
 
         if (statement->type() == END_STATEMENT) {
             advance_and_check_ret_unx_obj("No values after END");
@@ -1003,7 +981,7 @@ static std::expected<UP<block_statement>, UP<error_object>> parse_function() {
 }
 
 
-static std::expected<UP<infix_expression_object>, UP<error_object>> parse_infix_operator(UP<object> left) {
+static std::expected<UP<infix_expr_object>, UP<error_object>> parse_infix_operator(UP<object> left) {
 
     operator_type op = NULL_OP;
     switch (peek_type()) {
@@ -1039,9 +1017,9 @@ static std::expected<UP<infix_expression_object>, UP<error_object>> parse_infix_
     
     UP<object> right = parse_expression(precedence);
     if (right->type() == ERROR_OBJ) {
-        return std::unexpected(cast_UP<error_object>(right));}
+        return std::unexpected(CAST_UP(error_object, right));}
         
-    UP<infix_expression_object> expression = MAKE_UP(infix_expression_object, std::move(op_obj), std::move(left), std::move(right));
+    UP<infix_expr_object> expression = MAKE_UP(infix_expr_object, std::move(op_obj), std::move(left), std::move(right));
 
     return expression;
 
@@ -1050,9 +1028,12 @@ static std::expected<UP<infix_expression_object>, UP<error_object>> parse_infix_
 
 static UP<object> parse_data_type(token tok) {
 
+    if (!is_sql_data_type_token(tok)) {
+        FATAL_ERROR_THROW("parse_data_type() called with not SQL data type token", CUR_LOC); }
+
     token_type prefix = NONE;
     token_type data_type = NONE;
-    UP<object> parameter = UP<object>(new null_object());
+    std::optional<UP<object>> parameter;
 
     bool unsign = false;
     [[maybe_unused]] bool zerofill = false;
@@ -1073,12 +1054,8 @@ static UP<object> parse_data_type(token tok) {
         tok = peek();
     }
 
-    if (tok.type == STRING_LITERAL) {
-        std::string msg = "Data type has bad token type (" + token_type_to_string(peek_type()) + ")\n";
-        push_err_ret_err_obj(msg);}
-
     token_type type = tok.type;
-    advance_and_check_ret_obj("parse_data_type(): Nothing after data type");
+    advance_and_check_ret_obj("Nothing after data type");
 
     // Basic string
     switch (type) {
@@ -1091,16 +1068,14 @@ static UP<object> parse_data_type(token tok) {
     }
 
     if (type == VARCHAR) { 
-        //advance_and_check_ret_str("parse_data_type(): VARCHAR missing length");
 
         if (peek_type() != OPEN_PAREN) {
             data_type = VARCHAR;
             parameter = UP<object>(new integer_object(255));
             return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
-            //push_err_ret_err_obj("parse_data_type(): VARCHAR missing open parenthesis");
         }
 
-        advance_and_check_ret_obj("parse_data_type(): VARCHAR missing length");
+        advance_and_check_ret_obj("VARCHAR missing length");
 
 
         UP<object> obj = parse_expression(LOWEST);
@@ -1108,9 +1083,9 @@ static UP<object> parse_data_type(token tok) {
             return obj; }
 
         if (peek_type() != CLOSE_PAREN) {
-            push_err_ret_err_obj("parse_data_type(): VARCHAR missing closing parenthesis");}
+            push_err_ret_err_obj("VARCHAR missing closing parenthesis");}
 
-        advance_and_check_ret_obj("parse_data_type(): VARCHAR nothing after closing parenthesis");
+        advance_and_check_ret_obj("VARCHAR nothing after closing parenthesis");
 
         data_type = VARCHAR;
         parameter = std::move(obj);
@@ -1135,12 +1110,17 @@ static UP<object> parse_data_type(token tok) {
         return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
     }
 
+    if (type == TIMESTAMP) {
+        data_type = TIMESTAMP;
+        return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
+    }
+
     // String
     if (type == SET) {
         if (peek_type() == OPEN_PAREN) {
-            advance_and_check_ret_obj("parse_data_type(): ");
+            advance_and_check_ret_obj("SET: Missing elements");
             if (peek_type() == CLOSE_PAREN) {
-                advance_and_check_ret_obj("parse_data_type(): ");
+                advance_and_check_ret_obj("No values after SET elements");
                 data_type = SET;
                 return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
             }
@@ -1153,9 +1133,11 @@ static UP<object> parse_data_type(token tok) {
 
             if (peek_type() != CLOSE_PAREN) {
                 push_err_ret_err_obj("SET missing closing parenthesis");}
+
+            advance_and_check_ret_obj("Missing values after SET()");
             
             data_type = SET;
-            parameter = cast_UP<object>(elements);
+            parameter = CAST_UP(object, elements);
             return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
         } else {
             data_type = SET;
@@ -1166,9 +1148,9 @@ static UP<object> parse_data_type(token tok) {
     // Numeric
     if (type == BIT) {
         if (peek_type() == OPEN_PAREN) {
-            advance_and_check_ret_obj("parse_data_type(): ");
+            advance_and_check_ret_obj("BIT: Missing elements");
             if (peek_type() == CLOSE_PAREN) {
-                advance_and_check_ret_obj("parse_data_type(): ");
+                advance_and_check_ret_obj("No values after BIT elements");
                 data_type = BIT;
                 parameter = UP<object>(new integer_object(1));
                 return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
@@ -1177,23 +1159,24 @@ static UP<object> parse_data_type(token tok) {
             int num = 1;
             if (peek_type() != INTEGER_LITERAL) {
                 if (peek_type() != LINE_END) {
-                    errors.emplace_back("BIT contained non-integer");}
+                    log_sql_error("BIT contained non-integer");}
             } else {
                 if (tokens[token_position].data.length() > 2) {
-                    errors.emplace_back("BIT cannot be greated than 64");
+                    log_sql_error("BIT cannot be greated than 64");
                 } else {
                     num = std::stoi(tokens[token_position].data);
                     if (num < 1) {
-                        errors.emplace_back("BIT cannot be less than 1");}
+                        log_sql_error("BIT cannot be less than 1");}
                     if (num > 64) {
-                        errors.emplace_back("BIT cannot be greated than 64");}
+                        log_sql_error("BIT cannot be greated than 64");}
                 }
             }
-            advance_and_check_ret_obj("parse_data_type(): ");
+            advance_and_check_ret_obj("BIT: Missing clossing parenthesis");
 
             if (peek_type() != CLOSE_PAREN) {
-                errors.emplace_back("BIT missing clossing parenthesis");}
-                advance_and_check_ret_obj("parse_data_type(): ");
+                log_sql_error("BIT: Missing clossing parenthesis");}
+                
+            advance_and_check_ret_obj("Missing values after BIT()");
 
             data_type = BIT;
             parameter = UP<object>(new integer_object(num));
@@ -1206,10 +1189,20 @@ static UP<object> parse_data_type(token tok) {
         
     } else if (type == INT || type == INTEGER) {
         // The number is the display size, can ignore in computations for now. I read the default is 11 for signed and 10 for unsigned but I'm not sure it's standard so...
-       if (peek_type() == OPEN_PAREN) {
-            advance_and_check_ret_obj("parse_data_type(): ");
+       if (peek_type() != OPEN_PAREN) {
+            if (unsign) {
+                data_type = INT;
+                parameter = UP<object>(new integer_object(10));
+                return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
+            } else {
+                data_type = INT;
+                parameter = UP<object>(new integer_object(11));
+                return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
+            }
+       } else {
+            advance_and_check_ret_obj("INT: No values after open parenthesis");
             if (peek_type() == CLOSE_PAREN) {
-                advance_and_check_ret_obj("parse_data_type(): ");
+                advance_and_check_ret_obj("INT: No values after closing parenthesis");
                 if (unsign) {
                     data_type = INT;
                     parameter = UP<object>(new integer_object(10));
@@ -1223,34 +1216,27 @@ static UP<object> parse_data_type(token tok) {
 
             int num = 11;
             if (peek_type() != INTEGER_LITERAL) {
-                errors.emplace_back("INT contained non-integer");
-            } else {
-                if (tokens[token_position].data.length() > 3) {
-                    errors.emplace_back("INT cannot be greated than 255");
-                } else {
-                    num = std::stoi(tokens[token_position].data);
-                    if (num < 1) {
-                        errors.emplace_back("INT cannot be less than 1");}
-                    if (num > 255) {
-                        errors.emplace_back("INT cannot be greated than 255");}
-                }
-            }
-            advance_and_check_ret_obj("parse_data_type(): ");
+                advance_and_check_ret_obj("INT contained non-integer parameter"); }
+
+            if (tokens[token_position].data.length() > 3) {
+                advance_and_check_ret_obj("INT parameter cannot be greater than 255"); }
+
+            num = std::stoi(tokens[token_position].data); // Missing try catch, would be fatal error anyways because integer literal should contain an actual int
+            if (num < 1) {
+                advance_and_check_ret_obj("INT parameter cannot be less than 1");}
+            if (num > 255) {
+                advance_and_check_ret_obj("INT parameter cannot be greater than 255");}
+
+            advance_and_check_ret_obj("INT missing closing parenthesis");
 
             if (peek_type() != CLOSE_PAREN) {
-                push_err_ret_err_obj("INT missing clossing parenthesis");}
-            advance_and_check_ret_obj("parse_data_type(): ");
-            
-        } else {
-            if (unsign) {
-                data_type = INT;
-                parameter = UP<object>(new integer_object(10));
-                return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
-            } else {
+                push_err_ret_err_obj("INT missing closing parenthesis");}
+
+            advance_and_check_ret_obj("No values after INT()");
+
             data_type = INT;
-            parameter = UP<object>(new integer_object(11));
+            parameter = UP<object>(new integer_object(num));
             return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
-            }
         }
 
     } else if (type == DEC || type == DECIMAL) {
@@ -1258,12 +1244,12 @@ static UP<object> parse_data_type(token tok) {
     } else if (type == FLOAT) {
         data_type = FLOAT;
         return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
-    }else if (type == DOUBLE) {
+    } else if (type == DOUBLE) {
         data_type = DOUBLE;
         return UP<object>(new SQL_data_type_object(prefix, data_type, std::move(parameter)));
     }
 
-    push_err_ret_err_obj("Unknown SQL data type");
+    push_err_ret_err_obj("Unknown SQL data type (" << token_type_to_string(type) << ")");
 }
 
 static UP<object> parse_string_literal(token tok) {
@@ -1272,7 +1258,7 @@ static UP<object> parse_string_literal(token tok) {
     if (tok.data == "*") {
         return UP<object>(new star_object()); }
 
-
+    // Function call
     if (peek_type() == OPEN_PAREN) {
 
         advance_and_check_ret_obj("No values after open paren in function call");
@@ -1287,37 +1273,39 @@ static UP<object> parse_string_literal(token tok) {
         return UP<object>(new function_call_object(tok.data, std::move(arguments)));
     }
 
+    // Table index
     if (peek_type() == DOT) {
 
         advance_and_check_ret_obj("No values after dot");
 
         UP<object> column_name_obj = parse_expression(HIGHEST);
-        if (column_name_obj->type() != STRING_OBJ) {
+        if (column_name_obj->type() != STRING_OBJ) { // For now only strings (i.e. no AS)
             push_err_ret_err_obj("table.column: Failed to parse column"); }
 
-        UP<column_index_object> obj = MAKE_UP(column_index_object, UP<object>(new string_object(tok.data)), std::move(column_name_obj));
-        return cast_UP<object>(obj);
+        UP<column_index_object> obj = MAKE_UP(column_index_object, tok.data, CAST_UP(object, column_name_obj));
+        return CAST_UP(object, obj);
     }
 
+    // CREATE TABLE and function parameters. Maybe more idk
     if (is_sql_data_type_token(peek())) {
-        UP<object> obj = parse_expression(LOWEST);
-        if (obj->type() == ERROR_OBJ) {
-            return obj; }
-        
-        if (obj->type() != SQL_DATA_TYPE_OBJ) {
-            push_err_ret_err_obj("For now parameters must be a string literal followed by an SQL data type, can make generic later"); }
-        
-        return UP<object>(new parameter_object(tok.data, cast_UP<SQL_data_type_object>(obj)));
+        auto result = parse_list_until_comma({CLOSE_PAREN, LINE_END}); // For now also line end so can read files
+        if (!result.has_value()) {
+            push_err_ret_err_obj("Failed to parse SQL Data Type"); }
+
+        UP<group_object> group = CAST_UP(group_object, std::move(*result));
+
+        return UP<object>(new parameter_object(tok.data, std::move(group)));
     }
 
     return UP<object>(new string_object(tok.data)); 
 }
 
 static UP<object> prefix_parse(token tok) {
+
+    if (is_sql_data_type_token(tok)) {
+        return parse_data_type(tok); }
+
     switch (tok.type) {
-    case CHAR: case VARCHAR: case BOOL: case BOOLEAN: case DATE: case YEAR: case SET: case BIT: case INT: case INTEGER: case FLOAT: case DOUBLE: case NONE: 
-    case UNSIGNED: case ZEROFILL: case TINYBLOB: case TINYTEXT: case MEDIUMTEXT: case MEDIUMBLOB: case LONGTEXT: case LONGBLOB: case DEC: case DECIMAL:
-        return parse_data_type(tok); break;
 
     // Built-in functions
     case COUNT: {
@@ -1359,13 +1347,13 @@ static UP<object> prefix_parse(token tok) {
 
         UP<object> right_expression = parse_expression(SQL_STATEMENT); // SOMETHING SUSSY HERE!!!!!!!!!!!!!!!!!!!!
         if (right_expression->type() != INFIX_EXPRESSION_OBJ) {
-            errors.emplace_back(right_expression->data());
+            log_sql_error(right_expression->data());
             push_err_ret_err_obj("LEFT JOIN: Failed to parse right expression"); 
         }
 
-        UP<infix_expression_object> inner = MAKE_UP(infix_expression_object, MAKE_UP(operator_object, ON_OP), std::move(left_table_name), std::move(right_expression));
+        UP<infix_expr_object> inner = MAKE_UP(infix_expr_object, MAKE_UP(operator_object, ON_OP), std::move(left_table_name), std::move(right_expression));
 
-        return UP<object>(new prefix_expression_object(MAKE_UP(operator_object, LEFT_JOIN_OP), cast_UP<object>(inner)));
+        return UP<object>(new prefix_expression_object(MAKE_UP(operator_object, LEFT_JOIN_OP), CAST_UP(object, inner)));
     }
     case GROUP: {
         advance_and_check_ret_obj("No values after GROUP");
@@ -1381,9 +1369,7 @@ static UP<object> prefix_parse(token tok) {
 
         UP<group_object>& column_indexes_obj = *result;
 
-        // Can't check if they are specifically Column Index Objects cause they can be aliases, bruh !!MAJOR this is what the EXECUTE step is for
-
-        return UP<object>(new prefix_expression_object(MAKE_UP(operator_object, GROUP_BY_OP), cast_UP<object>(column_indexes_obj)));
+        return UP<object>(new prefix_expression_object(MAKE_UP(operator_object, GROUP_BY_OP), CAST_UP(object, column_indexes_obj)));
     }
     case ORDER: {
         advance_and_check_ret_obj("No values after ORDER");
@@ -1401,21 +1387,161 @@ static UP<object> prefix_parse(token tok) {
 
         // Can't check if they are specifically Column Index Objects cause they can be aliases, bruh
 
-        return UP<object>(new prefix_expression_object(MAKE_UP(operator_object, ORDER_BY_OP), cast_UP<object>(column_indexes_obj)));
+        return UP<object>(new prefix_expression_object(MAKE_UP(operator_object, ORDER_BY_OP), CAST_UP(object, column_indexes_obj)));
     }
     // SELECT clauses end
 
-    case DEFAULT:
+    // Table column expressions
+    case FOREIGN_KEY: { // !!MAJOR HERE
+        advance_and_check_ret_obj("No values after FOREIGN_KEY");
+        if (peek_type() != REFERENCES) {
+            push_err_ret_err_obj("FOREIGN_KEY: Missing REFERENCES"); }
+        advance_and_check_ret_obj("No values after REFERENCES");
+
+        UP<object> reference = parse_expression(HIGHEST); // TODO Not sure is predence is correct
+        if (reference->type() == ERROR_OBJ) {
+            push_err_ret_err_obj("FOREIGN_KEY: Failed to parse reference"); }
+        if (reference->type() != COLUMN_INDEX_OBJ) {
+            push_err_ret_err_obj("FOREIGN_KEY: Reference must be in the style of TABLE_NAME.COLUMN_NAME"); }
+
+        auto key_obj = MAKE_UP(foreign_key_object, CAST_UP(column_index_object, reference));
+        auto tab_col_expr = MAKE_UP(table_column_expr, CAST_UP(object, key_obj));
+        return CAST_UP(object, tab_col_expr);
+
+    } break;
+    // Table expressions
+    case DELIMITER: {
+        advance_and_check_ret_obj("No values after DELIMITER");
+        if (peek_type() != OPEN_PAREN) {
+            push_err_ret_err_obj("DELIMITER: Missing open parenthesis"); }
+
+        advance_and_check_ret_obj("DELIMITER: Missing column name");
+        if (peek_type() != STRING_LITERAL) {
+            push_err_ret_err_obj("DELIMITER: Must be in the style of DELIMITER(...)"); }
+
+        astring value = peek_data();
+
+        advance_and_check_ret_obj("DELIMITER: Missing closing parenthesis");
+        
+        advance_and_check_ret_obj("No values after DELIMITER()");
+
+        auto obj = MAKE_UP(delimiter_object, value);
+        auto col_expr = MAKE_UP(table_expr, CAST_UP(object, obj));
+        return CAST_UP(object, col_expr);
+    } break;
+    case PRIMARY_KEY: {
+        advance_and_check_ret_obj("No values after PRIMARY_KEY");
+        if (peek_type() != OPEN_PAREN) {
+            push_err_ret_err_obj("PRIMARY_KEY: Missing open parenthesis"); }
+
+        advance_and_check_ret_obj("PRIMARY_KEY: Missing column name");
+        if (peek_type() != STRING_LITERAL) {
+            push_err_ret_err_obj("PRIMARY_KEY: Must be in the style of PRIMARY_KEY([COLUMN_NAME])"); }
+
+        astring col_name = peek_data();
+
+        advance_and_check_ret_obj("PRIMARY_KEY: Missing closing parenthesis");
+        
+        advance_and_check_ret_obj("No values after PRIMARY_KEY()");
+
+        auto obj = MAKE_UP(primary_key_object, col_name);
+        auto col_expr = MAKE_UP(table_expr, CAST_UP(object, obj));
+        return CAST_UP(object, col_expr);
+    } break;
+    case CONSTRAINT: {
+        advance_and_check_ret_obj("No values after CONSTRAINT");
+        UP<object> constraint = parse_expression(HIGHEST); // TODO Not sure is predence is correct
+        if (constraint->type() == ERROR_OBJ) {
+            push_err_ret_err_obj("CONSTRAINT: Failed to parse constraint"); }
+
+        token_type method = peek_type();
+        advance_and_check_ret_obj("No values after CONSTRAINT method");
+        // Allowed methods
+        switch (method) {
+        case IGNORE:
+            break;
+        default: 
+            push_err_ret_err_obj("CONSTRAINT method (" << token_type_to_string(method) << ") not allowed");
+        }
+
+        auto constraint_obj = MAKE_UP(constraint_object, std::move(constraint), method);
+        auto tab_expr = MAKE_UP(table_expr, CAST_UP(object, constraint_obj));
+        return CAST_UP(object, tab_expr);
+    } break;
+    // Constraints
+    case UNIQUE: {
+        advance_and_check_ret_obj("No values after UNIQUE");
+        if (peek_type() != OPEN_PAREN) {
+            push_err_ret_err_obj("UNIQUE: Missing open parenthesis"); }
+        advance_and_check_ret_obj("UNIQUE: Missing elements");
+        auto result = parse_comma_seperated_list(CLOSE_PAREN);
+        if (!result.has_value()) {
+            push_err_ret_err_obj("UNIQUE: Failed to parse elements"); }
+
+        UP<group_object> group = std::move(*result);
+
+        if (peek_type() != CLOSE_PAREN) {
+            push_err_ret_err_obj("UNIQUE: Missing clossing parenthesis"); }
+        advance_and_check_ret_obj("UNIQUE: Missing clossing parenthesis");
+
+        return UP<object>(new unique_object(std::move(group)));
+    } break;
+    // End table column expressions
+
+    case DEFAULT: {
         advance_and_check_ret_obj("No values after DEFAULT");
-        return parse_expression(LOWEST);
+        UP<object> value = parse_expression(LOWEST);
+        if (value->type() == ERROR_OBJ) {
+            return value; }
+        return UP<object>(new default_value_object(std::move(value)));
+    } break;
+    // Default value functions
+    case CURRENT_TIMESTAMP: {
+        advance_and_check_ret_obj("No values after CURRENT_TIMESTAMP");
+        auto cur_time = MAKE_UP(current_timestamp_object);
+        auto func = MAKE_UP(default_value_func, CAST_UP(object, cur_time));
+        // auto def_val = MAKE_UP(default_value_object, CAST_UP(object, func));
+        return CAST_UP(object, func);
+    } break;
+    case AUTO_INCREMENT: {
+        advance_and_check_ret_obj("No values after AUTO_INCREMENT");
+        auto auto_inc = MAKE_UP(auto_increment_object);
+        auto func = MAKE_UP(default_value_func, CAST_UP(object, auto_inc));
+        auto def_val = MAKE_UP(default_value_object, CAST_UP(object, func));
+        return CAST_UP(object, def_val);
+    } break;
+    case HASH: {
+        advance_and_check_ret_obj("No values after HASH");
+        if (peek_type() != OPEN_PAREN) {
+            advance_and_check_ret_obj("HASH: Missing open parenthesis"); }
+        advance_and_check_ret_obj("HASH: Missing values");
+
+        auto result = parse_comma_seperated_list_ADVANCED({CLOSE_PAREN, LINE_END});
+        if (!result.has_value()) {
+            push_err_ret_err_obj("HASH: Failed to parse elements"); }
+
+        auto [group, end_type] = std::move(*result);
+        if (group->elements.size() == 0) {
+            push_err_ret_err_obj("HASH: Must contain at least one element"); }
+
+        if (peek_type() != CLOSE_PAREN) {
+            push_err_ret_err_obj("HASH: Missing clossing parenthesis"); }
+        advance_and_check_ret_obj("HASH: Missing clossing parenthesis");
+        
+        auto hash_obj = MAKE_UP(hash_object, std::move(group));
+        auto func = MAKE_UP(default_value_func, CAST_UP(object, hash_obj));
+
+        return UP<object>(new default_value_object(CAST_UP(object, func)));
+    } break;
+    // End default value functions
     case SELECT:
         return parse_select();
     case VALUES: {
         auto result = parse_values();
         if (result.has_value()) {
-            return cast_UP<object>(std::move(*result));
+            return CAST_UP(object, std::move(*result));
         } else {
-            return cast_UP<object>(std::move(result).error());
+            return CAST_UP(object, std::move(result).error());
         }
     } break;
     case SEMICOLON:
@@ -1436,9 +1562,9 @@ static UP<object> prefix_parse(token tok) {
         return parse_string_literal(tok);
     case OPEN_PAREN: {
         advance_and_check_ret_obj("No values after open parenthesis in expression");
-        UP<object> expression =  parse_expression(LOWEST);
+        UP<object> expression = parse_expression(LOWEST);
         if (peek_type() != CLOSE_PAREN) {
-            push_err_ret_err_obj("Expected closing parenthesis");}
+            push_err_ret_err_obj("Expected closing parenthesis, got (" << token_type_to_string(peek_type()) << ")");}
         advance_and_check_ret_obj("No values after close parenthesis in expression");
         return expression;
     } break;
@@ -1450,9 +1576,9 @@ static UP<object> prefix_parse(token tok) {
     case IF: case ELSIF: {
         auto result = parse_prefix_if();
         if (result.has_value()) {
-            return cast_UP<object>(std::move(*result));
+            return CAST_UP(object, std::move(*result));
         } else {
-            return cast_UP<object>(std::move(result).error());
+            return CAST_UP(object, std::move(result).error());
         }
     } break;
     case LESS_THAN:
@@ -1474,9 +1600,9 @@ static UP<object> prefix_parse(token tok) {
     case ELSE: {
         auto result = parse_block_statement();
         if (result.has_value()) {
-            return cast_UP<object>(std::move(*result));
+            return CAST_UP(object, std::move(*result));
         } else {
-            return cast_UP<object>(std::move(result).error());
+            return CAST_UP(object, std::move(result).error());
         }
     } break;
     case END:
@@ -1487,23 +1613,24 @@ static UP<object> prefix_parse(token tok) {
                 advance_and_check_ret_obj("No values after SEMICOLON in END IF statement"); }
             return UP<object>(new end_if_statement()); 
         }
-
         if (peek_type() == SEMICOLON) {
             advance_and_check_ret_obj("No values after SEMICOLON in END statement"); }
 
         return UP<object>(new end_statement()); break;
+    case LINE_END:
+        FATAL_ERROR_STACK_TRACE_THROW("Received LINE_END token, which should have been dealt with already", CUR_LOC);
     default:
         push_err_ret_err_obj("No prefix function for (" + token_type_to_string(tok.type) + ")");
     }
 }
 
-static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(UP<object> left) {
+static std::expected<UP<infix_expr_object>, UP<error_object>> infix_parse(UP<object> left) {
     switch (peek_type()) {
     case PLUS: case MINUS: case ASTERISK: case SLASH: case DOT: case EQUAL: case GREATER_THAN: case LESS_THAN: {
         return parse_infix_operator(std::move(left));
     } break;
     case AS: {
-        if (left->type() == COLUMN_INDEX_OBJECT) {
+        if (left->type() == COLUMN_INDEX_OBJ) {
 
             advance_and_check_ret_unx_obj("No values after AS");
 
@@ -1511,7 +1638,7 @@ static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(
             if (right->type() == ERROR_OBJ) {
                 push_err_ret_unx_err_obj("Failed to parse infix AS"); }
 
-            return MAKE_UP(infix_expression_object, MAKE_UP(operator_object, AS_OP), std::move(left), std::move(right));
+            return MAKE_UP(infix_expr_object, MAKE_UP(operator_object, AS_OP), std::move(left), std::move(right));
         } else {
             push_err_ret_unx_err_obj("AS functionallity not implemented except as column index");
         }
@@ -1521,10 +1648,10 @@ static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(
 
         UP<object> expression = parse_expression(LOWEST);
         if (expression->type() != INFIX_EXPRESSION_OBJ) {
-            push_err_ret_unx_err_obj("WHERE: Valued to parse expression"); }
+            push_err_ret_unx_err_obj("WHERE: Failed to parse expression"); }
 
 
-        return MAKE_UP(infix_expression_object, MAKE_UP(operator_object, WHERE_OP), std::move(left), std::move(expression));  // Might have to make prefix
+        return MAKE_UP(infix_expr_object, MAKE_UP(operator_object, WHERE_OP), std::move(left), std::move(expression));  // Might have to make prefix
     }
     case LEFT: {
         advance_and_check_ret_unx_obj("No values after LEFT");
@@ -1545,11 +1672,11 @@ static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(
 
         UP<object> right_expression = parse_expression(LOWEST);
         if (right_expression->type() != INFIX_EXPRESSION_OBJ) {
-            push_err_ret_unx_err_obj("LEFT JOIN: Valued to evaluate right expression"); }
+            push_err_ret_unx_err_obj("LEFT JOIN: Failed to evaluate right expression"); }
 
-        UP<infix_expression_object> inner = MAKE_UP(infix_expression_object, MAKE_UP(operator_object, ON_OP), std::move(left_table_name), std::move(right_expression));
+        UP<infix_expr_object> inner = MAKE_UP(infix_expr_object, MAKE_UP(operator_object, ON_OP), std::move(left_table_name), std::move(right_expression));
 
-        return MAKE_UP(infix_expression_object, MAKE_UP(operator_object, LEFT_JOIN_OP), std::move(left), cast_UP<object>(inner));
+        return MAKE_UP(infix_expr_object, MAKE_UP(operator_object, LEFT_JOIN_OP), std::move(left), CAST_UP(object, inner));
     }
     default:
         push_err_ret_unx_err_obj("No infix function for (" + token_type_to_string(peek_type()) + ") and left (" + std::string(left->inspect()) + ")");
@@ -1558,11 +1685,10 @@ static std::expected<UP<infix_expression_object>, UP<error_object>> infix_parse(
 
 
 
-static UP<object> parse_expression(size_t precedence) {
+UP<object> parse_expression(size_t precedence, const token& tok) {
     
     // std::cout << "parse_expression called with " << token_type_to_string(peek_type()) << std::endl;
 
-    token tok = peek(); // Seperate cause GDB is obnoxious
     UP<object> left = prefix_parse(tok);
     if (left->type() == ERROR_OBJ) {
         return left;}
@@ -1575,9 +1701,9 @@ static UP<object> parse_expression(size_t precedence) {
             const UP<object>& prev_left = left; // Having prev_left allows for no-ops
             auto result = infix_parse(std::move(left));
             if (!result.has_value()) {
-                return cast_UP<object>(std::move(result).error());
+                return CAST_UP(object, std::move(result).error());
             } else {
-                left = cast_UP<object>(std::move(*result));
+                left = CAST_UP(object, std::move(*result));
             }
 
             if (left == prev_left) {
@@ -1590,7 +1716,7 @@ static UP<object> parse_expression(size_t precedence) {
         
 // Helpers
 
-static token peek() {
+token peek() {
     if (token_position >= tokens.size()) {
         token tok = {LINE_END, "", 0, 0};
         return tok;

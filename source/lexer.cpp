@@ -1,13 +1,14 @@
-module;
-
-extern std::vector<std::string> errors;
-
-module lexer;
-
-import helpers;
-import token;
 
 
+#include "pch.h"
+
+#include "lexer.h"
+
+#include "token.h"
+#include "helpers.h"
+#include "logger.h"
+
+extern logger<error_msg> sql_errors;
 
 static std::string input;
 static size_t input_position;
@@ -24,10 +25,16 @@ static constexpr bool is_digit(char a) {
     return (std::isdigit(a) != 0);
 }
 
+// '|' character is reserved for serialization only >:( 
+
 
 static size_t read_string() {
     size_t start = input_position;
     while (input_position < input.length() && ( is_alpha(input[input_position]) || input[input_position] == '_' || is_digit(input[input_position] ))) {
+        if (input[input_position] == '|') {
+            sql_errors.add_msg("Failed to read string literal, contained '|'", CUR_LOC); 
+            return 0;
+        }
         input_position++;
     }
     //printf("start [%d], pos after read [%d]. ", start, input_position);
@@ -56,56 +63,79 @@ static token create_token(token_type type, std::string data, size_t line, size_t
     return token{type, data, line, line_position};
 }
 
-
-// Needs MORE testing
+// Tiny little "" are allowed in here then checked for 0 length later
 static token parse_quoted_string(char type) {
     // start only used for token creation
     size_t start = input_position;
     size_t start_line = line_count;
 
-    std::string out;
-    while (input_position++ < input.length() && (line_position_count++ != 0)) {
+    std::stringstream out;
+    while (input_position++ < input.length()) {
+        line_position_count++;
+
+        if (input_position == input.length() - 1 && input[input_position] != type) {
+            sql_errors.add_msg("Lexer: Couldn't find end of quotes. In (" + input.substr(start, input_position - start - 1) + ")", CUR_LOC);
+            return token{};
+        }
+
+        if (input[input_position] == '|') {
+            sql_errors.add_msg("Failed to read string literal, contained '|'", CUR_LOC); 
+            return token{};
+        }
+
         if (input[input_position] == '\n') {
             line_count++;
             line_position_count = 0;
         }
 
         if (input[input_position] == '\\') {
-            if (!(input_position + 1 < input.length())) {
-                errors.push_back("Lexer: \\ raw backslash has no partner (i.e. the n in \\n is missing) ");
+            if (input_position + 1 >= input.length()) {
+                sql_errors.add_msg("Lexer: \\ raw backslash has no partner (i.e. the n in \\n is missing)", CUR_LOC);
                 return token{};
             }
+
             input_position++;
             line_position_count++;
             if (input[input_position] == '\\') {
-                out.push_back('\\');
+                out << '\\';
             } else if (input[input_position] == 'n') {
-                out.push_back('\n');
+                out << '\n';
+            } else if (input[input_position] == type) {
+                out << type;
             }
+
             continue;
         }
 
         if (input[input_position] == type) {
-            if (input_position + 1 < input.length() && input[input_position + 1] == type) {
-                // Quote is escaped, add it then skip over the next
-                out.push_back(input[input_position]);
-                input_position++;
-                line_position_count++;
-                continue;
-            } else {
-                break;
-            }
+            // if (input_position + 1 < input.length() && input[input_position + 1] == type) {
+            //     // Quote is escaped, add it then skip over the next
+            //     out << input[input_position];
+            //     input_position++;
+            //     line_position_count++;
+            //     continue;
+            // } else {
+            //     break;
+            // }
+            break;
         }
-        out.push_back(input[input_position]);
+
+        out << input[input_position];
     }
-    if (input_position >= input.length()) {
-        errors.push_back("Lexer: Couldn't find end of quotes");
-        return token{};
+
+    input_position++;
+    line_position_count++;
+
+    // Concat contiguous quoted strings
+    while (input_position < input.length() && (input[input_position] == '\'' || input[input_position] == '\"')) {
+        token str_tok = parse_quoted_string(input[input_position]);
+        out << str_tok.data;
     }
-    return create_token(STRING_LITERAL, out, start_line, start);
+
+    return create_token(STRING_LITERAL, out.str(), start_line, start);
 }
 
-std::vector<token> lexer(std::string input_str) {
+std::vector<token> lexer(const std::string& input_str) {
     std::vector<token> tokens;
     input = input_str;
     input_position = 0;
@@ -115,18 +145,44 @@ std::vector<token> lexer(std::string input_str) {
 
     switch (input[input_position]) {
 
+        case '|' :
+            sql_errors.add_msg("Input contained '|'", CUR_LOC); 
+            return {};
+        // Ignore \n
+        case '\\': {
+            if (input_position + 1 >= input.length()) {
+                token tok = create_token(ILLEGAL, std::string(1, input[input_position]), line_count, line_position_count);
+                tokens.push_back(tok);
+                std::stringstream err;
+                err << "Unknown illegal token (" << input[input_position] << ")";
+                sql_errors.add_msg(err.str(), CUR_LOC);
+                input_position++;
+                break;
+            }
+
+            input_position++;
+
+            if (input[input_position] != 'n') {
+                token tok = create_token(ILLEGAL, std::string(1, input[input_position]), line_count, line_position_count);
+                tokens.push_back(tok);
+                sql_errors.add_msg("Unknown usage of (\\)", CUR_LOC);
+                input_position++;
+                break;
+            }
+
+            input_position++;
+        } break;
+
         case '$': {
 
             if (input_position + 1 >= input.length()) {
-                errors.push_back("singular $");
-                std::vector<token> garbage;
-                return garbage;
+                sql_errors.add_msg("singular $", CUR_LOC);
+                return {};
             }
             
             if (input[input_position + 1] != '$') {
-                errors.push_back("singular $");
-                std::vector<token> garbage;
-                return garbage;
+                sql_errors.add_msg("singular $", CUR_LOC);
+                return {};
             }
 
             token tok = create_token($$, "$$", line_count, line_position_count);
@@ -170,7 +226,7 @@ std::vector<token> lexer(std::string input_str) {
                 token tok = create_token(NOT_EQUAL, "!=", line_count, line_position_count);
                 tokens.push_back(tok);
                 input_position++;
-                line_position_count++;
+                line_position_count++; // FIXME Shouldn't this be += 2???
                 break;
             }
             token tok = create_token(BANG, "!", line_count, line_position_count);
@@ -179,7 +235,14 @@ std::vector<token> lexer(std::string input_str) {
             line_position_count++;
         } break;
         case '=': {
-            token tok = create_token(EQUAL, "=", line_count, line_position_count);
+            if (input_position + 1 < input.length()  && input[input_position] == '=') {
+                token tok = create_token(EQUAL, "==", line_count, line_position_count);
+                tokens.push_back(tok);
+                input_position += 2; 
+                line_position_count += 2;
+                break;
+            }
+            token tok = create_token(ASSIGNMENT, "=", line_count, line_position_count);
             tokens.push_back(tok);
             input_position++;
             line_position_count++;
@@ -204,23 +267,21 @@ std::vector<token> lexer(std::string input_str) {
         } break;
         case '\'': {
             token tok = parse_quoted_string('\'');
-            if (!errors.empty()) {
-                std::vector<token> garbage;
-                return garbage;
-            }
+            if (sql_errors.has_msgs()) {
+                return {}; }
+
             tokens.push_back(tok);
-            input_position++;
-            line_position_count++;
+            // input_position++;
+            // line_position_count++;
         } break;
         case '\"': {
             token tok = parse_quoted_string('\"');
-            if (!errors.empty()) {
-                std::vector<token> garbage;
-                return garbage;
-            }
+            if (sql_errors.has_msgs()) {
+                return {}; }
+
             tokens.push_back(tok);
-            input_position++;
-            line_position_count++;
+            // input_position++;
+            // line_position_count++;
         } break;
         case '\t':
             input_position++;
@@ -267,6 +328,9 @@ std::vector<token> lexer(std::string input_str) {
         default: { // Can put keywords in hashmap
             if (is_alpha(input[input_position])) {
                 size_t start = read_string();
+                if (sql_errors.has_msgs()) {
+                    return {}; }
+
                 std::string word = input.substr(start, input_position - start);
 
                 bool is_keyword = false;
@@ -283,17 +347,17 @@ std::vector<token> lexer(std::string input_str) {
                 if (is_keyword) {
                     continue; }
 
-                token tok = create_token(STRING_LITERAL, "EMPTY_STRING_LITERAL?!?", line_count, line_position_count);
+                token tok = create_token(STRING_LITERAL, "!ERR_STR_LIT!", line_count, line_position_count);
                 tok.data = word;
                 tokens.push_back(tok);
                 line_position_count += word.size();
             } else if (is_digit(input[input_position])) {
                 size_t start = read_number();
                 if (start == SIZE_T_MAX) {
-                    errors.push_back("Invalid number. Line = " + std::to_string(line_count) + ", position = " + std::to_string(line_position_count));
-                    std::vector<token> garbage;
-                    return garbage;
+                    sql_errors.add_msg("Invalid number. Line = " + std::to_string(line_count) + ", position = " + std::to_string(line_position_count), CUR_LOC);
+                    return {};
                 }
+
                 std::string substring = input.substr(start, input_position - start);
                 token tok = create_token(INTEGER_LITERAL, substring, line_count, line_position_count);
                 tokens.push_back(tok);
@@ -301,9 +365,9 @@ std::vector<token> lexer(std::string input_str) {
             } else {
                 token tok = create_token(ILLEGAL, std::string(1, input[input_position]), line_count, line_position_count);
                 tokens.push_back(tok);
-                std::string err = "Unknown illegal token ("; // Split up cause stupid warning
-                err += std::string(1, input[input_position]);
-                errors.push_back(err + ")");
+                std::stringstream err;
+                err << "Unknown illegal token (" << input[input_position] << ")";
+                sql_errors.add_msg(err.str(), CUR_LOC);
                 input_position++;
                 line_position_count++;
             }

@@ -1,22 +1,20 @@
-module;
+#pragma once
 
+// #include "structs.h"
+#include "object.h"
 #include "allocator_aliases.h"
 #include "allocators.h"
 
-export module node;
 
-import object;
-
-export {
 
 enum node_type : std::uint8_t{
     NULL_NODE, FUNCTION_NODE, INSERT_INTO_NODE, SELECT_FROM_NODE, ALTER_TABLE_NODE, CREATE_TABLE_NODE, SELECT_NODE,
 
     // Evaluated
-    E_INSERT_INTO_NODE, E_SELECT_NODE, E_SELECT_FROM_NODE, E_CREATE_TABLE_NODE, E_ALTER_TABLE_NODE, E_ASSERT_NODE,
+    E_INSERT_INTO_NODE, E_SELECT_NODE, E_SELECT_FROM_NODE, E_CREATE_TABLE_NODE, E_ALTER_TABLE_NODE,
 
     // CUSTOM
-    ASSERT_NODE,
+    ASSERT_NODE, E_ASSERT_NODE
 };
 
 class node {
@@ -126,6 +124,20 @@ class select_node : public node {
     UP<object> value;
 };
 
+class e_select_node : public e_node {
+    
+    public:
+    explicit e_select_node(serializable* set_value);
+    explicit e_select_node(UP<serializable> set_value);
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] node_type type() const override;
+    [[nodiscard]] e_select_node* clone() const override;
+
+    public:
+    UP<serializable> value;
+};
+
 class select_from : public node {
     
     public:
@@ -140,39 +152,55 @@ class select_from : public node {
     UP<object> value;
 };
 
-class e_select_from : virtual public e_node {
+class e_select_from_node : virtual public e_node {
     
     public:
-    explicit e_select_from(e_select_from_object* set_value);
-    explicit e_select_from(UP<e_select_from_object> set_value);
+    explicit e_select_from_node(e_select_from_object* set_value);
+    explicit e_select_from_node(UP<e_select_from_object> set_value);
 
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] node_type type() const override;
-    [[nodiscard]] e_select_from* clone() const override;
+    [[nodiscard]] e_select_from_node* clone() const override;
 
     public:
     UP<e_select_from_object> value;
 };
 
-class alter_table : public node {
+class alter_table_node : public node {
 
     public:
-    alter_table(object* set_table_name, object* set_tab_edit);
-    alter_table(UP<object> set_table_name, UP<object> set_tab_edit);
+    alter_table_node(object* set_table_name, object* set_tab_edit);
+    alter_table_node(UP<object> set_table_name, UP<object> set_tab_edit);
     
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] node_type type() const override;
-    [[nodiscard]] alter_table* clone() const override;
+    [[nodiscard]] alter_table_node* clone() const override;
 
     public:
     UP<object> table_name;
     UP<object> table_edit;
 };
 
+class e_alter_table_node : public e_node {
+
+    public:
+    e_alter_table_node(astring set_table_name, evaluated* set_tab_edit);
+    e_alter_table_node(astring set_table_name, UP<evaluated> set_tab_edit);
+    
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] node_type type() const override;
+    [[nodiscard]] e_alter_table_node* clone() const override;
+
+    public:
+    astring table_name;
+    UP<evaluated> table_edit;
+};
+
 class create_table : public node {
 
     public:
-    create_table(astring set_table_name, avec<UP<table_detail_object>>&& set_details);
+    create_table(astring set_table_name, group_object*    set_details);
+    create_table(astring set_table_name, UP<group_object> set_details);
 
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] node_type type() const override;
@@ -180,13 +208,14 @@ class create_table : public node {
 
     public:
     astring table_name;
-    avec<UP<table_detail_object>> details;
+    UP<group_object> details;
 };
 
 class e_create_table : virtual public e_node {
 
     public:
-    e_create_table(astring set_table_name, avec<UP<e_table_detail_object>>&& set_details);
+    e_create_table(astring set_table_name, e_group_object*    set_details);
+    e_create_table(astring set_table_name, UP<e_group_object> set_details);
 
     [[nodiscard]] astring inspect() const override;
     [[nodiscard]] node_type type() const override;
@@ -194,7 +223,7 @@ class e_create_table : virtual public e_node {
 
     public:
     astring table_name;
-    avec<UP<e_table_detail_object>> details;
+    UP<e_group_object> details;
 };
 
 
@@ -213,4 +242,16 @@ class assert_node : public node {
     UP<assert_object> value;
 };
 
-}
+class e_assert_node : public e_node {
+    
+    public:
+    explicit e_assert_node(e_assert_object* set_value);
+    explicit e_assert_node(UP<e_assert_object> set_value);
+
+    [[nodiscard]] astring inspect() const override;
+    [[nodiscard]] node_type type() const override;
+    [[nodiscard]] e_assert_node* clone() const override;
+
+    public:
+    UP<e_assert_object> value;
+};
